@@ -1,7 +1,7 @@
 import httpx
 
-from tests.processes import simulator_process
 from tests.integration.test_gateways import action
+from tests.processes import simulator_process
 from workflow_engine.gateways import HttpEffectGateway
 
 

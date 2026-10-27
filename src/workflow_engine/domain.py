@@ -1,4 +1,5 @@
 """Pure workflow transitions. Concurrency and I/O belong to the store and runner."""
+
 from __future__ import annotations
 
 import hashlib
@@ -7,7 +8,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 MAX_SUBMISSIONS = 5
 MAX_LOOKUPS = 5
@@ -16,7 +24,19 @@ MAX_DOCUMENT_BYTES = 256 * 1024
 RETRY_DELAYS = (1, 2, 4, 8)
 TERMINAL = frozenset({"SUCCEEDED", "FAILED", "CANCELLED", "NEEDS_REVIEW"})
 PASSIVE = TERMINAL | {"NEEDS_INPUT", "AWAITING_APPROVAL"}
-WorkflowState = Literal["PENDING_PLAN", "NEEDS_INPUT", "AWAITING_APPROVAL", "READY", "RUNNING", "RETRY_WAIT", "RECONCILING", "SUCCEEDED", "FAILED", "CANCELLED", "NEEDS_REVIEW"]
+WorkflowState = Literal[
+    "PENDING_PLAN",
+    "NEEDS_INPUT",
+    "AWAITING_APPROVAL",
+    "READY",
+    "RUNNING",
+    "RETRY_WAIT",
+    "RECONCILING",
+    "SUCCEEDED",
+    "FAILED",
+    "CANCELLED",
+    "NEEDS_REVIEW",
+]
 ActionState = Literal["PENDING", "IN_FLIGHT", "CONFIRMED", "SKIPPED", "FAILED", "UNKNOWN"]
 ShortText = Annotated[str, StringConstraints(min_length=1, max_length=2000)]
 Identifier = Annotated[str, StringConstraints(min_length=1, max_length=128)]
@@ -43,7 +63,9 @@ def utcnow() -> datetime:
 
 
 def canonical_json(value: object) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    )
 
 
 def canonical_hash(value: object) -> str:
@@ -102,7 +124,9 @@ class ExecutablePlan(Model):
 
 class NeedsInput(Model):
     kind: Literal["needs_input"] = "needs_input"
-    questions: list[Annotated[str, StringConstraints(min_length=1, max_length=200)]] = Field(min_length=1, max_length=3)
+    questions: list[Annotated[str, StringConstraints(min_length=1, max_length=200)]] = Field(
+        min_length=1, max_length=3
+    )
 
 
 PlanProposal = Annotated[ExecutablePlan | NeedsInput, Field(discriminator="kind")]
@@ -161,9 +185,16 @@ class Workflow(Model):
     @classmethod
     def new(cls, tenant_id: str, admission_key: str, request: WorkflowCreate) -> Workflow:
         now = utcnow()
-        return cls(workflow_id=str(uuid4()), tenant_id=tenant_id, admission_key=admission_key,
-                   request_hash=canonical_hash(request.model_dump()), request_text=request.text,
-                   created_at=now, updated_at=now, next_run_at=now)
+        return cls(
+            workflow_id=str(uuid4()),
+            tenant_id=tenant_id,
+            admission_key=admission_key,
+            request_hash=canonical_hash(request.model_dump()),
+            request_text=request.text,
+            created_at=now,
+            updated_at=now,
+            next_run_at=now,
+        )
 
     @model_validator(mode="after")
     def invariants(self):
@@ -184,7 +215,22 @@ class Workflow(Model):
 
 
 class DomainEvent(Model):
-    kind: Literal["planning_started", "planned", "clarification", "approved", "action_started", "action_confirmed", "skipped", "ambiguous", "lookup_started", "retry", "retry_due", "failed", "review_required", "cancelled"]
+    kind: Literal[
+        "planning_started",
+        "planned",
+        "clarification",
+        "approved",
+        "action_started",
+        "action_confirmed",
+        "skipped",
+        "ambiguous",
+        "lookup_started",
+        "retry",
+        "retry_due",
+        "failed",
+        "review_required",
+        "cancelled",
+    ]
     at: datetime = Field(default_factory=utcnow)
     action_id: Literal["ticket", "reservation"] | None = None
     plan: ExecutablePlan | None = None
@@ -231,8 +277,12 @@ def transition(workflow: Workflow, event: DomainEvent) -> Workflow:
             stop("NEEDS_INPUT")
         else:
             require(e.plan is not None and bool(e.plan_hash) and bool(e.actions))
-            data.update(plan=e.plan.model_dump(), plan_hash=e.plan_hash,
-                        catalog_version=e.catalog_version, actions=[a.model_dump() for a in e.actions])
+            data.update(
+                plan=e.plan.model_dump(),
+                plan_hash=e.plan_hash,
+                catalog_version=e.catalog_version,
+                actions=[a.model_dump() for a in e.actions],
+            )
             stop("AWAITING_APPROVAL")
     elif e.kind == "approved":
         require(w.state == "AWAITING_APPROVAL" and e.plan_hash == w.plan_hash)
@@ -243,15 +293,23 @@ def transition(workflow: Workflow, event: DomainEvent) -> Workflow:
         require(action is not None and action["status"] == "PENDING")
         require(all(a.status in {"CONFIRMED", "SKIPPED"} for a in w.actions[:index]))
         require(action["submissions"] < MAX_SUBMISSIONS)
-        action.update(status="IN_FLIGHT", submissions=action["submissions"] + 1,
-                      reconciliation_count=0, next_retry_at=None)
+        action.update(
+            status="IN_FLIGHT",
+            submissions=action["submissions"] + 1,
+            reconciliation_count=0,
+            next_retry_at=None,
+        )
         due("RUNNING")
     elif e.kind in {"action_confirmed", "skipped"}:
         require(w.state in {"RUNNING", "RECONCILING"} and action is not None)
         require(action["status"] in {"IN_FLIGHT", "UNKNOWN"} and e.result is not None)
         require(e.kind != "skipped" or e.action_id == "reservation")
-        action.update(status="SKIPPED" if e.kind == "skipped" else "CONFIRMED", result=e.result,
-                      last_error=None, next_retry_at=None)
+        action.update(
+            status="SKIPPED" if e.kind == "skipped" else "CONFIRMED",
+            result=e.result,
+            last_error=None,
+            next_retry_at=None,
+        )
         if all(a["status"] in {"CONFIRMED", "SKIPPED"} for a in actions):
             stop("SUCCEEDED")
         else:
@@ -270,7 +328,11 @@ def transition(workflow: Workflow, event: DomainEvent) -> Workflow:
         require(e.retry_phase in {"planning", "action"})
         if e.retry_phase == "action":
             require(action is not None and action["status"] in {"IN_FLIGHT", "UNKNOWN"})
-            action.update(status="PENDING", next_retry_at=e.at + timedelta(seconds=e.delay_s), last_error=e.error)
+            action.update(
+                status="PENDING",
+                next_retry_at=e.at + timedelta(seconds=e.delay_s),
+                last_error=e.error,
+            )
         data["retry_phase"] = e.retry_phase
         due("RETRY_WAIT", e.delay_s)
     elif e.kind == "retry_due":
@@ -281,10 +343,14 @@ def transition(workflow: Workflow, event: DomainEvent) -> Workflow:
         require(w.state in {"PENDING_PLAN", "READY", "RUNNING", "RECONCILING"})
         if action:
             require(action["status"] not in {"CONFIRMED", "SKIPPED"})
-            action.update(status="UNKNOWN" if e.kind == "review_required" else "FAILED", last_error=e.error)
+            action.update(
+                status="UNKNOWN" if e.kind == "review_required" else "FAILED", last_error=e.error
+            )
         stop("NEEDS_REVIEW" if e.kind == "review_required" else "FAILED")
     elif e.kind == "cancelled":
-        require(w.state in {"PENDING_PLAN", "NEEDS_INPUT", "AWAITING_APPROVAL", "READY", "RETRY_WAIT"})
+        require(
+            w.state in {"PENDING_PLAN", "NEEDS_INPUT", "AWAITING_APPROVAL", "READY", "RETRY_WAIT"}
+        )
         require(not any(a.status in {"IN_FLIGHT", "UNKNOWN"} for a in w.actions))
         stop("CANCELLED")
     else:
@@ -292,7 +358,10 @@ def transition(workflow: Workflow, event: DomainEvent) -> Workflow:
     data.update(revision=w.revision + 1, updated_at=e.at)
     if data["next_run_at"] is not None:
         data["wake_seq"] = w.wake_seq + 1
-    data["history"] = (data["history"] + [HistoryEntry(at=e.at, event=e.kind, action_id=e.action_id, error=e.error).model_dump()])[-256:]
+    data["history"] = (
+        data["history"]
+        + [HistoryEntry(at=e.at, event=e.kind, action_id=e.action_id, error=e.error).model_dump()]
+    )[-256:]
     return Workflow.model_validate(data)
 
 

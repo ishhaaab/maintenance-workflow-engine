@@ -1,4 +1,5 @@
 """SQLite commits an effect and its indefinite idempotency ledger together."""
+
 import json
 import sqlite3
 from contextlib import contextmanager
@@ -43,34 +44,52 @@ class Ledger:
     def apply(self, key: str, payload: dict, operation) -> dict:
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT payload_hash, outcome FROM operations WHERE key=?", (key,)).fetchone()
+            row = db.execute(
+                "SELECT payload_hash, outcome FROM operations WHERE key=?", (key,)
+            ).fetchone()
             digest = canonical_hash(payload)
             if row:
                 if row[0] != digest:
                     raise KeyConflict("Key already used with another payload")
                 return json.loads(row[1])
             outcome = operation(db)
-            db.execute("INSERT INTO operations VALUES (?, ?, ?)", (key, digest, canonical_json(outcome)))
+            db.execute(
+                "INSERT INTO operations VALUES (?, ?, ?)", (key, digest, canonical_json(outcome))
+            )
             db.commit()
             return outcome
 
     def effect(self, db, kind: str, payload: dict) -> dict:
         if kind == "reservation":
-            result = db.execute("UPDATE stock SET quantity=quantity-? WHERE part_id=? AND quantity>=?", (payload["quantity"], payload["part_id"], payload["quantity"]))
+            result = db.execute(
+                "UPDATE stock SET quantity=quantity-? WHERE part_id=? AND quantity>=?",
+                (payload["quantity"], payload["part_id"], payload["quantity"]),
+            )
             if result.rowcount == 0:
                 return {"status": "SKIPPED", "result": {"reason": "stock_unavailable"}}
         external_id = uuid4().hex
-        db.execute("INSERT INTO effects VALUES (?, ?, ?, ?)", (external_id, payload["logical_action_id"], kind, canonical_json(payload)))
+        db.execute(
+            "INSERT INTO effects VALUES (?, ?, ?, ?)",
+            (external_id, payload["logical_action_id"], kind, canonical_json(payload)),
+        )
         return {"status": "CONFIRMED", "result": {"id": external_id}}
 
     def lookup(self, key: str) -> dict:
         with self.connect() as db:
             row = db.execute("SELECT outcome FROM operations WHERE key=?", (key,)).fetchone()
-            return {"status": "CONFIRMED", "outcome": json.loads(row[0])} if row else {"status": "NOT_FOUND"}
+            return (
+                {"status": "CONFIRMED", "outcome": json.loads(row[0])}
+                if row
+                else {"status": "NOT_FOUND"}
+            )
 
     def effect_counts(self) -> dict[str, int]:
         with self.connect() as db:
-            return dict(db.execute("SELECT logical_action_id, COUNT(*) FROM effects GROUP BY logical_action_id").fetchall())
+            return dict(
+                db.execute(
+                    "SELECT logical_action_id, COUNT(*) FROM effects GROUP BY logical_action_id"
+                ).fetchall()
+            )
 
     def stock(self, part_id: str) -> int:
         with self.connect() as db:

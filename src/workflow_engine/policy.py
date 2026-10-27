@@ -1,11 +1,19 @@
 """Tenant-scoped catalog and deliberately limited deterministic request grammar."""
-import json
+
 import re
 from pathlib import Path
 
 from pydantic import Field
 
-from .domain import Action, ExecutablePlan, Model, NeedsInput, PlanProposal, WorkflowCreate, canonical_hash
+from .domain import (
+    Action,
+    ExecutablePlan,
+    Model,
+    NeedsInput,
+    PlanProposal,
+    WorkflowCreate,
+    canonical_hash,
+)
 
 
 class Asset(Model):
@@ -33,7 +41,13 @@ class CatalogProvider:
 
     @classmethod
     def from_file(cls, path: str | Path):
-        return cls([TenantCatalog.model_validate_json(line) for line in Path(path).read_text(encoding="utf-8").splitlines() if line.strip()])
+        return cls(
+            [
+                TenantCatalog.model_validate_json(line)
+                for line in Path(path).read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+        )
 
     def get(self, tenant_id: str) -> TenantCatalog:
         return self._catalogs[tenant_id].model_copy(deep=True)
@@ -59,7 +73,11 @@ def _normalize(value: str) -> str:
 
 
 def _resolve(reference: str, entries: list):
-    matches = [entry for entry in entries if _normalize(reference) in {_normalize(s) for s in [entry.id, *entry.aliases]}]
+    matches = [
+        entry
+        for entry in entries
+        if _normalize(reference) in {_normalize(s) for s in [entry.id, *entry.aliases]}
+    ]
     return matches[0] if len(matches) == 1 else None
 
 
@@ -71,28 +89,53 @@ def request_intent(request: WorkflowCreate, catalog: TenantCatalog) -> dict | No
     asset = _resolve(match["asset"], catalog.assets)
     if not asset:
         return None
-    result = {"asset_id": asset.id, "priority": (match["priority"] or "normal").lower(), "reservation": None}
+    result = {
+        "asset_id": asset.id,
+        "priority": (match["priority"] or "normal").lower(),
+        "reservation": None,
+    }
     if match["part"]:
         part = _resolve(match["part"], catalog.parts)
         quantity = 1 if match["quantity"].lower() in {"one", "a"} else int(match["quantity"])
-        if "reservation" not in catalog.allowed_actions or not part or part.id not in asset.part_ids or not 1 <= quantity <= 10:
+        if (
+            "reservation" not in catalog.allowed_actions
+            or not part
+            or part.id not in asset.part_ids
+            or not 1 <= quantity <= 10
+        ):
             return None
         result["reservation"] = {"part_id": part.id, "quantity": quantity}
     return result
 
 
-def validate_and_compile(request: WorkflowCreate, proposal: PlanProposal, catalog: TenantCatalog,
-                         workflow_id: str, tenant_id: str) -> CompiledPlan | NeedsInput:
-    clarification = NeedsInput(questions=["Specify an authorized asset and, if needed, a compatible part and quantity using the supported request format."])
+def validate_and_compile(
+    request: WorkflowCreate,
+    proposal: PlanProposal,
+    catalog: TenantCatalog,
+    workflow_id: str,
+    tenant_id: str,
+) -> CompiledPlan | NeedsInput:
+    clarification = NeedsInput(
+        questions=[
+            "Specify an authorized asset and, if needed, a compatible part and quantity using the supported request format."
+        ]
+    )
     if catalog.tenant_id != tenant_id:
         return clarification
     if isinstance(proposal, NeedsInput):
         return proposal
     intent = request_intent(request, catalog)
     reservation = proposal.reservation.model_dump() if proposal.reservation else None
-    if not intent or proposal.asset_id != intent["asset_id"] or proposal.ticket.priority != intent["priority"] or reservation != intent["reservation"]:
+    if (
+        not intent
+        or proposal.asset_id != intent["asset_id"]
+        or proposal.ticket.priority != intent["priority"]
+        or reservation != intent["reservation"]
+    ):
         return clarification
-    plan_hash = canonical_hash({"schema_version": 1, "catalog_version": catalog.version, "plan": proposal.model_dump()})
+    plan_hash = canonical_hash(
+        {"schema_version": 1, "catalog_version": catalog.version, "plan": proposal.model_dump()}
+    )
     actions = []
     arguments = {"ticket": {"asset_id": proposal.asset_id, **proposal.ticket.model_dump()}}
     if reservation:
@@ -100,4 +143,6 @@ def validate_and_compile(request: WorkflowCreate, proposal: PlanProposal, catalo
     for action_id, args in arguments.items():
         key = canonical_hash([tenant_id, workflow_id, plan_hash, action_id])
         actions.append(Action(action_id=action_id, arguments=args, idempotency_key=key))
-    return CompiledPlan(plan=proposal, plan_hash=plan_hash, catalog_version=catalog.version, actions=actions)
+    return CompiledPlan(
+        plan=proposal, plan_hash=plan_hash, catalog_version=catalog.version, actions=actions
+    )

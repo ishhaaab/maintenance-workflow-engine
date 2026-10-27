@@ -26,14 +26,14 @@ Source plan: `docs/2026-10-18-maintenance-workflow.md`.
 
 - [x] 1. Domain and offline package. Missing-package RED, then 10 tests passed; CLI help works offline. Python 3.12.16, exact dependencies in `uv.lock`.
 - [x] 2. Catalog policy and fixture planner. Missing-module RED, then full suite 27 passed. Grammar and two-tenant catalog documented.
-- [ ] 3. Store implementations written. Missing-module RED; 30 passed, 2 explicit MongoDB skips. Native MongoDB test binary download in progress; real-store verification pending.
+- [x] 3. MongoDB store and fake. Missing-module RED, fake contracts passed locally. Real MongoDB admission, claim, stale-token and enqueue tests passed in GitHub Actions run 40521208198.
 - [x] 4. SQLite-backed external simulators. Missing-module RED, then 33 passed / 2 MongoDB skips. Concurrent same-key submissions, stock skip, persisted restart lookup, payload conflict and post-commit failure covered. Test setup uses independent temporary files.
-- [ ] 5. Typed HTTP gateways written and tested through actual simulator apps and failure transports. Missing-module RED, then 42 passed / 2 MongoDB skips. Subprocess network check follows with CLI wiring.
-- [ ] 6. Redis Streams and recoverable dispatcher written. Missing-module RED; offline publish-loss/redis-loss contract passed, 43 tests passed / 3 service skips. Real Redis verification pending.
-- [ ] 7. Leased happy-path runner written. RED then 46 passed / 4 service skips; explicit approval, separate action ticks, skip and lease loss before submission covered. Real-store happy path pending MongoDB availability.
+- [x] 5. Typed HTTP gateways. Missing-module RED; simulator contracts and real subprocess HTTP timeout-after-commit test passed. Lookup recovered the original effect without a duplicate.
+- [x] 6. Redis Streams and dispatcher. Offline publish-loss recovery passed locally; real stream pending reclamation and recreation passed in GitHub Actions run 40521208198. Full process fault matrix is tracked under Task 12.
+- [x] 7. Leased runner. RED then 46 passed locally, with service tests explicitly skipped there. Real-store/simulator happy path passed in GitHub Actions run 40521208198.
 - [ ] 8. HTTP admission/status/approval/cancellation written. RED then 49 passed / 4 service skips. Auth, tenant isolation, body limits, replayed approval, active-lease cancellation and partial-effect cancellation passed. Real-store race checks pending.
 - [ ] 9. Bounded retry and reconciliation implemented. Eight expected RED failures, then 59 passed / 4 service skips. Same-key recovery, lookup exhaustion, stale workers, two planner calls and submission exhaustion covered. OS-level worker termination verification follows.
-- [ ] 10. CLI processes, pinned Compose images and opt-in isolated deployment test written. Local subprocess timeout/reconciliation test passed. Docker is absent locally; GitHub Actions will run integration and Compose gates.
+- [x] 10. CLI processes and pinned Compose deployment. GitHub Actions run 40521208198 built and ran the isolated Compose stack and verified workflow completion after worker restart. Image digests are verified by that run; local Docker remains unavailable.
 - [ ] 11. OpenAI-compatible planner, strict post-validation and 40/80 synthetic splits implemented. 66 passed / 4 service skips before Compose test addition. No live inference run; label human review and approved inference budget remain required.
-- [ ] 12. Fault benchmark
-- [ ] 13. Observability, load, CI and handoff
+- [ ] 12. All 20 named process-backed scenarios and ten-seed benchmark driver are implemented. Full matrix is pending its first CI run. Every run writes a distinct artifact and failures remain in the denominator.
+- [ ] 13. Redacted JSON logging, report summaries, fixture load driver and CI are implemented. Local suite: 73 passed, 25 explicit service/Compose skips. Runtime reconnect logging regression reproduced as KeyError on reserved LogRecord.process, then fixed to process_role. Final review and measured load are pending.

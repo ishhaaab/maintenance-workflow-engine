@@ -1,4 +1,5 @@
 """Opt-in fault controls for isolated experiments. Never enabled by default."""
+
 import threading
 import time
 from typing import Literal
@@ -8,11 +9,20 @@ from fastapi.responses import JSONResponse
 from pydantic import Field
 
 from workflow_engine.domain import Model
+
 from .ledger import KeyConflict, Ledger
 
 
 class FaultProfile(Model):
-    mode: Literal["none", "before_commit", "permanent", "after_commit", "lookup_unavailable", "post_commit_delay"] = "none"
+    mode: Literal[
+        "none",
+        "before_commit",
+        "unknown_before_commit",
+        "permanent",
+        "after_commit",
+        "lookup_unavailable",
+        "post_commit_delay",
+    ] = "none"
     remaining: int = Field(default=1, ge=0, le=1000)
     delay_s: float = Field(default=12, ge=0, le=30)
 
@@ -44,8 +54,17 @@ def simulator_app(ledger: Ledger, kind: str, body_model: type, enable_faults: bo
         if not idempotency_key or len(idempotency_key) > 128:
             return JSONResponse({"category": "invalid_key"}, status_code=400)
         fault = faults.take()
+        if fault.mode == "unknown_before_commit":
+            return JSONResponse({"category": "unknown"}, status_code=503)
         if fault.mode in {"before_commit", "permanent"}:
-            return JSONResponse({"category": "retryable_no_effect" if fault.mode == "before_commit" else "permanent_no_effect"}, status_code=503 if fault.mode == "before_commit" else 422)
+            return JSONResponse(
+                {
+                    "category": "retryable_no_effect"
+                    if fault.mode == "before_commit"
+                    else "permanent_no_effect"
+                },
+                status_code=503 if fault.mode == "before_commit" else 422,
+            )
         data = payload.model_dump()
         try:
             outcome = ledger.apply(idempotency_key, data, lambda db: ledger.effect(db, kind, data))
@@ -72,6 +91,7 @@ def simulator_app(ledger: Ledger, kind: str, body_model: type, enable_faults: bo
         return {"status": "ok"}
 
     if enable_faults:
+
         @app.put("/__faults")
         def set_fault(profile: FaultProfile):
             faults.set(profile)

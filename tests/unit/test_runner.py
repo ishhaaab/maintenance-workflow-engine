@@ -32,11 +32,13 @@ async def test_lease_loss_before_submit_prevents_effect(tmp_path, clock):
         await h.tick(w)
         await h.approve(w)
         real_save = h.store.save
+
         async def expire_after_intent(workflow, revision, token):
             saved = await real_save(workflow, revision, token)
             if saved.state == "RUNNING":
                 clock.advance(31)
             return saved
+
         h.store.save = expire_after_intent
         result, w = await h.tick(w)
         assert result.status == "lease_lost"

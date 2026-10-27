@@ -13,7 +13,9 @@ async def ready(h):
 
 
 @pytest.mark.parametrize("action_id", ["ticket", "reservation"])
-async def test_commit_then_lost_response_reconciles_without_resubmission(tmp_path, clock, action_id):
+async def test_commit_then_lost_response_reconciles_without_resubmission(
+    tmp_path, clock, action_id
+):
     async with AsyncExitStack() as stack:
         h = await harness(tmp_path, clock, stack)
         w = await ready(h)
@@ -72,10 +74,12 @@ async def test_abandoned_inflight_recovery(tmp_path, clock, after_effect):
         w = await ready(h)
         gateway = h.runner.gateways["ticket"]
         submit = gateway.submit
+
         async def crash(action):
             if after_effect:
                 await submit(action)
             raise Crash()
+
         gateway.submit = crash
         with pytest.raises(Crash):
             await h.tick(w)
@@ -94,8 +98,10 @@ async def test_non_idempotent_ambiguity_never_replays(tmp_path, clock):
         w = await ready(h)
         gateway = h.runner.gateways["ticket"]
         gateway.supports_idempotent_replay = False
+
         async def unknown(action):
             return EffectResult(status="unknown", error="lost")
+
         gateway.submit = unknown
         await h.tick(w)
         _, w = await h.tick(w)
@@ -109,11 +115,13 @@ async def test_expired_worker_cannot_checkpoint_after_new_owner_recovers(tmp_pat
         w = await ready(h)
         gateway = h.runner.gateways["ticket"]
         submit = gateway.submit
+
         async def overlap(action):
             result = await submit(action)
             clock.advance(31)
             await h.runner.tick(w.workflow_id, "replacement")
             return result
+
         gateway.submit = overlap
         result, w = await h.tick(w)
         assert result.status == "lease_lost"
@@ -126,8 +134,10 @@ async def test_expired_worker_cannot_checkpoint_after_new_owner_recovers(tmp_pat
 async def test_planner_budget_is_durable_and_bounded(tmp_path, clock):
     async with AsyncExitStack() as stack:
         h = await harness(tmp_path, clock, stack)
+
         async def timeout(request, catalog):
             raise TimeoutError()
+
         h.runner.planner.propose = timeout
         w = await h.admit()
         for _ in range(6):
@@ -142,8 +152,10 @@ async def test_exhausted_ambiguous_replay_never_claims_definitive_failure(tmp_pa
         h = await harness(tmp_path, clock, stack)
         w = await ready(h)
         gateway = h.runner.gateways["ticket"]
+
         async def unknown(action):
             return EffectResult(status="unknown", error="lost")
+
         gateway.submit = unknown
         for _ in range(30):
             clock.advance(10)

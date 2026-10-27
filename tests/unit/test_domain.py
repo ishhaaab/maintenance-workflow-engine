@@ -4,20 +4,42 @@ import pytest
 from pydantic import ValidationError
 
 from workflow_engine.domain import (
-    Action, Conflict, DomainEvent, ExecutablePlan, ReservationSpec, TicketSpec,
-    Workflow, WorkflowCreate, canonical_hash, transition,
+    Action,
+    Conflict,
+    DomainEvent,
+    ExecutablePlan,
+    ReservationSpec,
+    TicketSpec,
+    Workflow,
+    WorkflowCreate,
+    canonical_hash,
+    transition,
 )
 
 
 def planned():
     workflow = Workflow.new("tenant-a", "admission", WorkflowCreate(text="Inspect P-17"))
     plan = ExecutablePlan(asset_id="P-17", ticket=TicketSpec(description="Inspection"))
-    return transition(workflow, DomainEvent(
-        kind="planned", plan=plan, plan_hash=canonical_hash(plan.model_dump()),
-        catalog_version="v1", actions=[Action(action_id="ticket", arguments={
-            "asset_id": "P-17", "priority": "normal", "description": "Inspection",
-        }, idempotency_key="stable")],
-    ))
+    return transition(
+        workflow,
+        DomainEvent(
+            kind="planned",
+            plan=plan,
+            plan_hash=canonical_hash(plan.model_dump()),
+            catalog_version="v1",
+            actions=[
+                Action(
+                    action_id="ticket",
+                    arguments={
+                        "asset_id": "P-17",
+                        "priority": "normal",
+                        "description": "Inspection",
+                    },
+                    idempotency_key="stable",
+                )
+            ],
+        ),
+    )
 
 
 def test_no_effect_before_approval():
@@ -41,11 +63,15 @@ def test_confirmed_action_immutable():
     workflow = planned()
     workflow = transition(workflow, DomainEvent(kind="approved", plan_hash=workflow.plan_hash))
     workflow = transition(workflow, DomainEvent(kind="action_started", action_id="ticket"))
-    workflow = transition(workflow, DomainEvent(kind="action_confirmed", action_id="ticket", result={"id": "t1"}))
+    workflow = transition(
+        workflow, DomainEvent(kind="action_confirmed", action_id="ticket", result={"id": "t1"})
+    )
     assert workflow.state == "SUCCEEDED"
     assert workflow.next_run_at is None
     with pytest.raises(Conflict):
-        transition(workflow, DomainEvent(kind="action_confirmed", action_id="ticket", result={"id": "t2"}))
+        transition(
+            workflow, DomainEvent(kind="action_confirmed", action_id="ticket", result={"id": "t2"})
+        )
 
 
 def test_terminal_workflow_not_rescheduled():
@@ -78,13 +104,21 @@ def test_cancel_preserves_confirmed_ticket():
     workflow = planned()
     data = workflow.model_dump()
     data["plan"]["reservation"] = {"part_id": "seal", "quantity": 1}
-    data["actions"].append(Action(action_id="reservation", arguments={"part_id": "seal", "quantity": 1}, idempotency_key="part-key").model_dump())
+    data["actions"].append(
+        Action(
+            action_id="reservation",
+            arguments={"part_id": "seal", "quantity": 1},
+            idempotency_key="part-key",
+        ).model_dump()
+    )
     workflow = Workflow.model_validate(data)
     workflow = transition(workflow, DomainEvent(kind="approved", plan_hash=workflow.plan_hash))
     with pytest.raises(Conflict):
         transition(workflow, DomainEvent(kind="action_started", action_id="reservation"))
     workflow = transition(workflow, DomainEvent(kind="action_started", action_id="ticket"))
-    workflow = transition(workflow, DomainEvent(kind="action_confirmed", action_id="ticket", result={"id": "t1"}))
+    workflow = transition(
+        workflow, DomainEvent(kind="action_confirmed", action_id="ticket", result={"id": "t1"})
+    )
     workflow = transition(workflow, DomainEvent(kind="cancelled"))
     assert workflow.state == "CANCELLED"
     assert workflow.actions[0].result == {"id": "t1"}

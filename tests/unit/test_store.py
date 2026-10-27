@@ -2,7 +2,14 @@ import asyncio
 
 import pytest
 
-from workflow_engine.domain import Conflict, DomainEvent, LeaseLost, Workflow, WorkflowCreate, transition
+from workflow_engine.domain import (
+    Conflict,
+    DomainEvent,
+    LeaseLost,
+    Workflow,
+    WorkflowCreate,
+    transition,
+)
 from workflow_engine.store import MemoryWorkflowStore
 
 
@@ -38,7 +45,11 @@ async def test_claim_fencing_revision_and_protected_fields(clock):
     assert not await store.renew(first)
     await store.release(first)
     assert await store.renew(second)
-    saved = await store.save(transition(second.workflow, DomainEvent(kind="planning_started", at=clock())), 0, second.token)
+    saved = await store.save(
+        transition(second.workflow, DomainEvent(kind="planning_started", at=clock())),
+        0,
+        second.token,
+    )
     assert saved.revision == 1
     with pytest.raises(Conflict):
         await store.save(changed, 0, second.token)

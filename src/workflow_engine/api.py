@@ -1,11 +1,21 @@
 """Tenant-scoped durable commands. Admission never calls the planner or gateways."""
+
 import secrets
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pymongo.errors import PyMongoError
 
-from .domain import ApprovalRequest, CancelRequest, Conflict, DomainEvent, NotFound, Workflow, WorkflowCreate, transition
+from .domain import (
+    ApprovalRequest,
+    CancelRequest,
+    Conflict,
+    DomainEvent,
+    NotFound,
+    Workflow,
+    WorkflowCreate,
+    transition,
+)
 
 
 class BodyLimit:
@@ -22,12 +32,16 @@ class BodyLimit:
                 return
             size += len(message.get("body", b""))
             if size > self.limit:
-                return await JSONResponse({"detail": "Request body exceeds 16 KiB"}, status_code=413)(scope, receive, send)
+                return await JSONResponse(
+                    {"detail": "Request body exceeds 16 KiB"}, status_code=413
+                )(scope, receive, send)
             messages.append(message)
             if not message.get("more_body", False):
                 break
+
         async def replay():
             return messages.pop(0) if messages else await receive()
+
         return await self.app(scope, replay, send)
 
 
@@ -48,7 +62,9 @@ def create_app(settings, store, catalog, broker=None):
 
     @app.exception_handler(Conflict)
     async def conflict(_request, _error):
-        return JSONResponse({"detail": "Revision, state, approval or lease conflict"}, status_code=409)
+        return JSONResponse(
+            {"detail": "Revision, state, approval or lease conflict"}, status_code=409
+        )
 
     @app.exception_handler(NotFound)
     async def missing(_request, _error):
@@ -59,8 +75,16 @@ def create_app(settings, store, catalog, broker=None):
         return JSONResponse({"detail": "Durable store unavailable"}, status_code=503)
 
     @app.post("/workflows")
-    async def admit(request: WorkflowCreate, tenant_id: str = Depends(tenant), idempotency_key: str | None = Header(default=None)):
-        if not idempotency_key or not 1 <= len(idempotency_key) <= 128 or not idempotency_key.strip():
+    async def admit(
+        request: WorkflowCreate,
+        tenant_id: str = Depends(tenant),
+        idempotency_key: str | None = Header(default=None),
+    ):
+        if (
+            not idempotency_key
+            or not 1 <= len(idempotency_key) <= 128
+            or not idempotency_key.strip()
+        ):
             raise HTTPException(400, "Idempotency-Key must contain 1..128 characters")
         catalog.get(tenant_id)
         result = await store.insert_or_get(Workflow.new(tenant_id, idempotency_key, request))
@@ -94,7 +118,11 @@ def create_app(settings, store, catalog, broker=None):
             return _public(workflow)
         if workflow.revision != request.expected_revision:
             raise Conflict("Stale revision")
-        return _public(await store.save(transition(workflow, DomainEvent(kind="cancelled")), request.expected_revision, None))
+        return _public(
+            await store.save(
+                transition(workflow, DomainEvent(kind="cancelled")), request.expected_revision, None
+            )
+        )
 
     @app.get("/health/live")
     async def live():
@@ -105,7 +133,9 @@ def create_app(settings, store, catalog, broker=None):
         try:
             await store.ping()
         except Exception:
-            return JSONResponse({"status": "unavailable", "mongo": False, "broker": False}, status_code=503)
+            return JSONResponse(
+                {"status": "unavailable", "mongo": False, "broker": False}, status_code=503
+            )
         available = False
         if broker:
             try:

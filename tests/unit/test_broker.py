@@ -19,7 +19,9 @@ class RecordingBroker:
 
 async def test_dispatcher_recovers_after_publish_failure_and_redis_data_loss(clock):
     store = MemoryWorkflowStore(clock)
-    workflow = (await store.insert_or_get(Workflow.new("a", "k", WorkflowCreate(text="request")))).workflow
+    workflow = (
+        await store.insert_or_get(Workflow.new("a", "k", WorkflowCreate(text="request")))
+    ).workflow
     broker = RecordingBroker(fail=True)
     with pytest.raises(ConnectionError):
         await dispatch_once(store, broker)

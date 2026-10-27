@@ -1,4 +1,5 @@
 """Replaceable Redis wakeups. MongoDB due intent repairs every publication gap."""
+
 from typing import Protocol
 
 from pydantic import ValidationError
@@ -27,7 +28,9 @@ async def dispatch_once(store: WorkflowStore, broker: WakeupBroker) -> int:
 
 
 class RedisWakeupBroker:
-    def __init__(self, redis, stream="workflow-wakeups", group="workflow-workers", reclaim_idle_ms=60000):
+    def __init__(
+        self, redis, stream="workflow-wakeups", group="workflow-workers", reclaim_idle_ms=60000
+    ):
         self.redis, self.stream, self.group = redis, stream, group
         self.reclaim_idle_ms = reclaim_idle_ms
         self._cursor = "0-0"
@@ -45,10 +48,14 @@ class RedisWakeupBroker:
     async def receive(self, consumer: str) -> BrokerMessage | None:
         await self.initialize()
         try:
-            claimed = await self.redis.xautoclaim(self.stream, self.group, consumer, self.reclaim_idle_ms, self._cursor, count=1)
+            claimed = await self.redis.xautoclaim(
+                self.stream, self.group, consumer, self.reclaim_idle_ms, self._cursor, count=1
+            )
             self._cursor, messages = claimed[0], claimed[1]
             if not messages:
-                response = await self.redis.xreadgroup(self.group, consumer, {self.stream: ">"}, count=1, block=1000)
+                response = await self.redis.xreadgroup(
+                    self.group, consumer, {self.stream: ">"}, count=1, block=1000
+                )
                 messages = response[0][1] if response else []
         except ResponseError as error:
             if "NOGROUP" in str(error):

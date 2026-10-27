@@ -24,7 +24,9 @@ def clock():
 @pytest.fixture
 async def mongo_store():
     from pymongo import AsyncMongoClient
+
     from workflow_engine.store import MongoWorkflowStore
+
     url = os.environ.get("TEST_MONGO_URL")
     if not url:
         pytest.skip("Set TEST_MONGO_URL to run real MongoDB checks")

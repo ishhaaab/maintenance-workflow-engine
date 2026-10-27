@@ -1,4 +1,5 @@
 """Test-owned subprocess lifecycle; never stop processes by name or shared port."""
+
 import os
 import socket
 import subprocess
@@ -24,7 +25,23 @@ def simulator_process(kind, directory):
     url = f"http://127.0.0.1:{port}"
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / f"{kind}.log").open("w", encoding="utf-8") as log:
-        process = subprocess.Popen([sys.executable, "-m", "workflow_engine.cli", kind, "--port", str(port), "--database", str(directory / f"{kind}.sqlite"), "--enable-faults"], cwd=ROOT, stdout=log, stderr=log, env=os.environ.copy())
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "workflow_engine.cli",
+                kind,
+                "--port",
+                str(port),
+                "--database",
+                str(directory / f"{kind}.sqlite"),
+                "--enable-faults",
+            ],
+            cwd=ROOT,
+            stdout=log,
+            stderr=log,
+            env=os.environ.copy(),
+        )
         try:
             deadline = time.monotonic() + 15
             with httpx.Client(timeout=0.5, trust_env=False) as client:

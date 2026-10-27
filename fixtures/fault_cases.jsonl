@@ -1,0 +1,20 @@
+{"id":"duplicate_admission","expected_state":"SUCCEEDED","expected_effects":{"ticket":1,"reservation":1},"review_expected":false,"injection_point":"concurrent admission","deadline_s":30}
+{"id":"changed_payload_replay","expected_state":"SUCCEEDED","expected_effects":{"ticket":1,"reservation":1},"review_expected":false,"injection_point":"admission replay","deadline_s":30}
+{"id":"duplicate_redis_message","expected_state":"SUCCEEDED","expected_effects":{"ticket":1,"reservation":1},"review_expected":false,"injection_point":"wakeup publication","deadline_s":30}
+{"id":"dispatcher_death_before_publish","expected_state":"SUCCEEDED","expected_effects":{"ticket":1,"reservation":1},"review_expected":false,"injection_point":"durable enqueue marker before Redis publish","deadline_s":30}
+{"id":"redis_unavailable_at_admission","expected_state":"SUCCEEDED","expected_effects":{"ticket":1,"reservation":1},"review_expected":false,"injection_point":"HTTP admission","deadline_s":30}
+{"id":"redis_data_loss_after_publish","expected_state":"SUCCEEDED","expected_effects":{"ticket":1,"reservation":1},"review_expected":false,"injection_point":"after Redis accepted wakeup","deadline_s":30}
+{"id":"worker_death_before_effect","expected_state":"SUCCEEDED","expected_effects":{"ticket":1,"reservation":1},"review_expected":false,"injection_point":"persisted IN_FLIGHT before HTTP","deadline_s":30}
+{"id":"ticket_commit_then_response_loss","expected_state":"SUCCEEDED","expected_effects":{"ticket":1,"reservation":1},"review_expected":false,"injection_point":"ticket SQLite commit","deadline_s":30}
+{"id":"reservation_commit_then_response_loss","expected_state":"SUCCEEDED","expected_effects":{"ticket":1,"reservation":1},"review_expected":false,"injection_point":"reservation SQLite commit","deadline_s":30}
+{"id":"worker_death_after_effect_before_checkpoint","expected_state":"SUCCEEDED","expected_effects":{"ticket":1,"reservation":1},"review_expected":false,"injection_point":"HTTP success before MongoDB checkpoint","deadline_s":30}
+{"id":"expired_lease_and_stale_save","expected_state":"SUCCEEDED","expected_effects":{"ticket":1,"reservation":1},"review_expected":false,"injection_point":"lease takeover","deadline_s":30}
+{"id":"concurrent_workers","expected_state":"SUCCEEDED","expected_effects":{"ticket":1,"reservation":1},"review_expected":false,"injection_point":"20 competing worker claims","deadline_s":30}
+{"id":"transient_proven_no_effect_rejection","expected_state":"SUCCEEDED","expected_effects":{"ticket":1,"reservation":1},"review_expected":false,"injection_point":"pre-commit known rejection","deadline_s":30}
+{"id":"permanent_rejection","expected_state":"FAILED","expected_effects":{"ticket":0,"reservation":0},"review_expected":false,"injection_point":"explicit business decline","deadline_s":30}
+{"id":"inventory_unavailable","expected_state":"SUCCEEDED","expected_effects":{"ticket":1,"reservation":0},"review_expected":false,"injection_point":"zero stock in inventory transaction","deadline_s":30}
+{"id":"lookup_repeatedly_unavailable","expected_state":"NEEDS_REVIEW","expected_effects":{"ticket":1,"reservation":0},"review_expected":true,"injection_point":"five lookups after uncertain commit","deadline_s":40}
+{"id":"non_idempotent_downstream_ambiguity","expected_state":"NEEDS_REVIEW","expected_effects":{"ticket":0,"reservation":0},"review_expected":true,"injection_point":"unknown submission without replay capability","deadline_s":30}
+{"id":"stale_mismatched_approval","expected_state":"SUCCEEDED","expected_effects":{"ticket":1,"reservation":1},"review_expected":false,"injection_point":"wrong hash and stale approval before valid approval","deadline_s":30}
+{"id":"cross_tenant_request_injection","expected_state":"NEEDS_INPUT","expected_effects":{"ticket":0,"reservation":0},"review_expected":false,"injection_point":"valid JSON proposal for foreign asset","deadline_s":30}
+{"id":"safe_cancellation_after_ticket","expected_state":"CANCELLED","expected_effects":{"ticket":1,"reservation":0},"review_expected":false,"injection_point":"confirmed ticket before reservation","deadline_s":30}
