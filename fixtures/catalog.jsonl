@@ -1,0 +1,2 @@
+{"tenant_id":"tenant-a","version":"v1","assets":[{"id":"P-17","aliases":["pump P-17","pump seventeen"],"part_ids":["SEAL-1"]}],"parts":[{"id":"SEAL-1","aliases":["seal kit","seal kits"]}],"allowed_actions":["ticket","reservation"]}
+{"tenant_id":"tenant-b","version":"v1","assets":[{"id":"B-22","aliases":["blower B-22","blower twenty-two"],"part_ids":["BEARING-2"]}],"parts":[{"id":"BEARING-2","aliases":["bearing kit","bearing kits"]}],"allowed_actions":["ticket","reservation"]}

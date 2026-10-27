@@ -1,0 +1,1 @@
+{"id":"dev-001","tenant_id":"tenant-a","text":"Create an inspection ticket for pump P-17 and reserve one seal kit if available.","expected":{"kind":"plan","asset_id":"P-17","ticket":{"priority":"normal","description":"Inspection requested for P-17."},"reservation":{"part_id":"SEAL-1","quantity":1}}}

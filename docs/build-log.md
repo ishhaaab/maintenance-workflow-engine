@@ -25,7 +25,7 @@ Source plan: `docs/2026-10-18-maintenance-workflow.md`.
 ## Progress
 
 - [x] 1. Domain and offline package. Missing-package RED, then 10 tests passed; CLI help works offline. Python 3.12.16, exact dependencies in `uv.lock`.
-- [ ] 2. Catalog policy and fixture planner
+- [x] 2. Catalog policy and fixture planner. Missing-module RED, then full suite 27 passed. Grammar and two-tenant catalog documented.
 - [ ] 3. MongoDB authority and leases
 - [ ] 4. Durable external simulators
 - [ ] 5. HTTP gateways
