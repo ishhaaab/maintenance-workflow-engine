@@ -29,7 +29,7 @@ Source plan: `docs/2026-10-18-maintenance-workflow.md`.
 - [ ] 3. Store implementations written. Missing-module RED; 30 passed, 2 explicit MongoDB skips. Native MongoDB test binary download in progress; real-store verification pending.
 - [x] 4. SQLite-backed external simulators. Missing-module RED, then 33 passed / 2 MongoDB skips. Concurrent same-key submissions, stock skip, persisted restart lookup, payload conflict and post-commit failure covered. Test setup uses independent temporary files.
 - [ ] 5. Typed HTTP gateways written and tested through actual simulator apps and failure transports. Missing-module RED, then 42 passed / 2 MongoDB skips. Subprocess network check follows with CLI wiring.
-- [ ] 6. Redis and dispatcher
+- [ ] 6. Redis Streams and recoverable dispatcher written. Missing-module RED; offline publish-loss/redis-loss contract passed, 43 tests passed / 3 service skips. Real Redis verification pending.
 - [ ] 7. Leased runner
 - [ ] 8. HTTP interface
 - [ ] 9. Recovery
