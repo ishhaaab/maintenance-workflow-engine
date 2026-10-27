@@ -1,0 +1,72 @@
+name: maintenance-workflow-engine
+
+x-app: &app
+  build: .
+  image: maintenance-workflow-engine:local
+  env_file: ${WORKFLOW_ENV_FILE:-.env}
+  environment: &environment
+    WORKFLOW_MONGO_URL: mongodb://mongo:27017
+    WORKFLOW_REDIS_URL: redis://redis:6379/0
+    WORKFLOW_TICKETING_URL: http://ticketing:8001
+    WORKFLOW_INVENTORY_URL: http://inventory:8002
+  restart: unless-stopped
+  init: true
+
+services:
+  mongo:
+    image: mongo:7.0.16@sha256:c630c59342c1493d50345136df2af14a76b9e827dd5316bfabee07a0880a5f3a
+    volumes: [mongo-data:/data/db]
+    ports: ["127.0.0.1:28017:27017"]
+    healthcheck:
+      test: [CMD, mongosh, --quiet, --eval, "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7.2.7@sha256:96af50b9ce0cd7f44f73266ce90bb63a6d6d5655adb8854d2723a0382524c8f3
+    ports: ["127.0.0.1:26379:6379"]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  ticketing:
+    <<: *app
+    command: [ticketing, --host, 0.0.0.0]
+    volumes: [ticket-data:/app/data]
+    ports: ["127.0.0.1:8001:8001"]
+  inventory:
+    <<: *app
+    command: [inventory, --host, 0.0.0.0]
+    volumes: [inventory-data:/app/data]
+    ports: ["127.0.0.1:8002:8002"]
+  api:
+    <<: *app
+    command: [api, --host, 0.0.0.0]
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      mongo: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  worker:
+    <<: *app
+    command: [worker]
+    deploy: {replicas: 2}
+    depends_on:
+      mongo: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      ticketing: {condition: service_started}
+      inventory: {condition: service_started}
+  dispatcher:
+    <<: *app
+    command: [dispatcher]
+    depends_on:
+      mongo: {condition: service_healthy}
+
+volumes:
+  mongo-data:
+  ticket-data:
+  inventory-data:

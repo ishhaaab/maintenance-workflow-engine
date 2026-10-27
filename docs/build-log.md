@@ -33,7 +33,7 @@ Source plan: `docs/2026-10-18-maintenance-workflow.md`.
 - [ ] 7. Leased happy-path runner written. RED then 46 passed / 4 service skips; explicit approval, separate action ticks, skip and lease loss before submission covered. Real-store happy path pending MongoDB availability.
 - [ ] 8. HTTP admission/status/approval/cancellation written. RED then 49 passed / 4 service skips. Auth, tenant isolation, body limits, replayed approval, active-lease cancellation and partial-effect cancellation passed. Real-store race checks pending.
 - [ ] 9. Bounded retry and reconciliation implemented. Eight expected RED failures, then 59 passed / 4 service skips. Same-key recovery, lookup exhaustion, stale workers, two planner calls and submission exhaustion covered. OS-level worker termination verification follows.
-- [ ] 10. Compose deployment
-- [ ] 11. Real-model adapter and evaluation
+- [ ] 10. CLI processes, pinned Compose images and opt-in isolated deployment test written. Local subprocess timeout/reconciliation test passed. Docker is absent locally; GitHub Actions will run integration and Compose gates.
+- [ ] 11. OpenAI-compatible planner, strict post-validation and 40/80 synthetic splits implemented. 66 passed / 4 service skips before Compose test addition. No live inference run; label human review and approved inference budget remain required.
 - [ ] 12. Fault benchmark
 - [ ] 13. Observability, load, CI and handoff
