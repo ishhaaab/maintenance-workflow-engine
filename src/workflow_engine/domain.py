@@ -115,6 +115,7 @@ class Action(Model):
     status: ActionState = "PENDING"
     submissions: int = Field(default=0, ge=0, le=MAX_SUBMISSIONS)
     reconciliation_count: int = Field(default=0, ge=0, le=MAX_LOOKUPS)
+    has_ambiguous_submission: bool = False
     next_retry_at: datetime | None = None
     result: dict | None = None
     last_error: ShortText | None = None
@@ -257,7 +258,7 @@ def transition(workflow: Workflow, event: DomainEvent) -> Workflow:
             due("READY")
     elif e.kind == "ambiguous":
         require(w.state == "RUNNING" and action is not None and action["status"] == "IN_FLIGHT")
-        action.update(status="UNKNOWN", last_error=e.error)
+        action.update(status="UNKNOWN", last_error=e.error, has_ambiguous_submission=True)
         due("RECONCILING")
     elif e.kind == "lookup_started":
         require(w.state == "RECONCILING" and action is not None and action["status"] == "UNKNOWN")

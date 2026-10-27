@@ -5,7 +5,7 @@ import logging
 from pydantic import ValidationError
 
 from .domain import (
-    MAX_PLANNER_CALLS, PASSIVE, DomainEvent, LeaseLost, NeedsInput, TickResult,
+    MAX_LOOKUPS, MAX_SUBMISSIONS, MAX_PLANNER_CALLS, RETRY_DELAYS, PASSIVE, DomainEvent, LeaseLost, NeedsInput, TickResult,
     WorkflowCreate, canonical_hash, transition,
 )
 
@@ -73,15 +73,18 @@ class Runner:
             except (ValidationError, ValueError):
                 compiled = NeedsInput(questions=["Please clarify the asset, part and requested action."])
             except (TimeoutError, ConnectionError):
-                return await self._save(w, DomainEvent(kind="failed", error="planner_unavailable"), lease, lost)
+                event = DomainEvent(kind="retry", retry_phase="planning", delay_s=1, error="planner_unavailable") if w.planning_attempts < MAX_PLANNER_CALLS else DomainEvent(kind="failed", error="planner_budget_exhausted")
+                return await self._save(w, event, lease, lost)
             if isinstance(compiled, NeedsInput):
                 event = DomainEvent(kind="clarification", clarification=compiled)
             else:
                 event = DomainEvent(kind="planned", **compiled.model_dump())
             return await self._save(w, event, lease, lost)
-        if w.state in {"RUNNING", "RECONCILING"}:
+        if w.state == "RUNNING":
             action = next(a for a in w.actions if a.status in {"IN_FLIGHT", "UNKNOWN"})
-            return await self._save(w, DomainEvent(kind="review_required", action_id=action.action_id, error="recovery_pending"), lease, lost)
+            return await self._save(w, DomainEvent(kind="ambiguous", action_id=action.action_id, error="abandoned_inflight"), lease, lost)
+        if w.state == "RECONCILING":
+            return await self._reconcile(w, lease, lost)
         if w.state == "READY":
             action = next(a for a in w.actions if a.status == "PENDING")
             w = await self._save(w, DomainEvent(kind="action_started", action_id=action.action_id), lease, lost)
@@ -95,8 +98,34 @@ class Runner:
             if outcome.status in {"confirmed", "skipped"}:
                 event = DomainEvent(kind="action_confirmed" if outcome.status == "confirmed" else "skipped", action_id=action.action_id, result=outcome.result)
             elif outcome.status in {"declined", "retryable"}:
-                event = DomainEvent(kind="failed", action_id=action.action_id, error=outcome.error)
+                current = next(a for a in w.actions if a.action_id == action.action_id)
+                if current.has_ambiguous_submission:
+                    event = DomainEvent(kind="ambiguous", action_id=action.action_id, error="prior_submission_unresolved")
+                elif outcome.status == "retryable" and current.submissions < MAX_SUBMISSIONS:
+                    event = DomainEvent(kind="retry", action_id=action.action_id, retry_phase="action", delay_s=RETRY_DELAYS[current.submissions - 1], error=outcome.error)
+                else:
+                    event = DomainEvent(kind="failed", action_id=action.action_id, error=outcome.error)
             else:
                 event = DomainEvent(kind="ambiguous", action_id=action.action_id, error=outcome.error)
             return await self._save(w, event, lease, lost)
         return w
+
+    async def _reconcile(self, w, lease, lost):
+        action = next(a for a in w.actions if a.status == "UNKNOWN")
+        gateway = self.gateways[action.action_id]
+        if action.last_error == "key_conflict" or action.reconciliation_count >= MAX_LOOKUPS:
+            return await self._save(w, DomainEvent(kind="review_required", action_id=action.action_id, error="unresolved_outcome"), lease, lost)
+        delay = RETRY_DELAYS[min(action.reconciliation_count, len(RETRY_DELAYS) - 1)]
+        w = await self._save(w, DomainEvent(kind="lookup_started", action_id=action.action_id, delay_s=delay), lease, lost)
+        action = next(a for a in w.actions if a.action_id == action.action_id)
+        lookup = await gateway.lookup(action)
+        if lookup.status == "confirmed":
+            outcome = lookup.outcome
+            event = DomainEvent(kind="action_confirmed" if outcome.status == "confirmed" else "skipped", action_id=action.action_id, result=outcome.result)
+        elif lookup.status == "not_found" and gateway.supports_idempotent_replay and action.submissions < MAX_SUBMISSIONS:
+            event = DomainEvent(kind="retry", action_id=action.action_id, retry_phase="action", delay_s=RETRY_DELAYS[action.submissions - 1], error="safe_same_key_replay")
+        elif lookup.status == "not_found" or action.reconciliation_count >= MAX_LOOKUPS:
+            event = DomainEvent(kind="review_required", action_id=action.action_id, error="unresolved_outcome")
+        else:
+            return w  # lookup_started already persisted a bounded next lookup deadline.
+        return await self._save(w, event, lease, lost)

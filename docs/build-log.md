@@ -32,7 +32,7 @@ Source plan: `docs/2026-10-18-maintenance-workflow.md`.
 - [ ] 6. Redis Streams and recoverable dispatcher written. Missing-module RED; offline publish-loss/redis-loss contract passed, 43 tests passed / 3 service skips. Real Redis verification pending.
 - [ ] 7. Leased happy-path runner written. RED then 46 passed / 4 service skips; explicit approval, separate action ticks, skip and lease loss before submission covered. Real-store happy path pending MongoDB availability.
 - [ ] 8. HTTP admission/status/approval/cancellation written. RED then 49 passed / 4 service skips. Auth, tenant isolation, body limits, replayed approval, active-lease cancellation and partial-effect cancellation passed. Real-store race checks pending.
-- [ ] 9. Recovery
+- [ ] 9. Bounded retry and reconciliation implemented. Eight expected RED failures, then 59 passed / 4 service skips. Same-key recovery, lookup exhaustion, stale workers, two planner calls and submission exhaustion covered. OS-level worker termination verification follows.
 - [ ] 10. Compose deployment
 - [ ] 11. Real-model adapter and evaluation
 - [ ] 12. Fault benchmark
