@@ -2,6 +2,8 @@
 import json
 from pathlib import Path
 from typing import Protocol
+import hashlib
+import httpx
 
 from pydantic import TypeAdapter
 
@@ -33,3 +35,50 @@ class FixturePlanner:
 
     async def propose(self, request: WorkflowCreate, catalog: TenantCatalog) -> PlanProposal:
         return self._cases.get((catalog.tenant_id, request.text), NeedsInput(questions=["Submit a documented fixture request or configure the model adapter."])).model_copy(deep=True)
+
+
+class ModelPlanner:
+    """Exactly one provider request per propose; the runner owns the durable call budget."""
+    def __init__(self, client: httpx.AsyncClient, settings, prompt_path="prompts/maintenance_v1.txt"):
+        self.client, self.settings = client, settings
+        self.prompt = Path(prompt_path).read_text(encoding="utf-8")
+        self.metadata = {"adapter": "model", "model": settings.model_name,
+                         "model_revision": settings.model_revision, "prompt_version": "maintenance_v1",
+                         "prompt_hash": hashlib.sha256(self.prompt.encode()).hexdigest(),
+                         "temperature": 0, "max_tokens": 512, "response_format": "json_object"}
+        # Evaluation is sequential; these diagnostics never enter workflow logs.
+        self.last_usage = {}
+        self.last_schema_valid = False
+
+    async def propose(self, request: WorkflowCreate, catalog: TenantCatalog) -> PlanProposal:
+        self.last_usage, self.last_schema_valid = {}, False
+        headers = {}
+        if self.settings.model_key.get_secret_value():
+            headers["Authorization"] = "Bearer " + self.settings.model_key.get_secret_value()
+        payload = {
+            "model": self.settings.model_name, "temperature": 0, "max_tokens": 512,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": self.prompt + "\nJSON schema:\n" + json.dumps(_PROPOSAL.json_schema())},
+                {"role": "user", "content": json.dumps({"request": request.model_dump(), "authorized_catalog": catalog.model_dump()})},
+            ],
+        }
+        try:
+            response = await self.client.post("chat/completions", json=payload, headers=headers, timeout=self.settings.planner_timeout_s)
+            response.raise_for_status()
+        except httpx.HTTPError:
+            raise ConnectionError("Planner provider unavailable") from None
+        try:
+            if len(response.content) > 131072:
+                raise ValueError("Oversized model response")
+            body = response.json()
+            usage = body.get("usage", {})
+            self.last_usage = {key: value for key, value in usage.items() if key in {"prompt_tokens", "completion_tokens", "total_tokens"} and isinstance(value, int)}
+            message = body["choices"][0]["message"]
+            if message.get("refusal"):
+                raise ValueError("Refused")
+            proposal = parse_proposal(message["content"])
+            self.last_schema_valid = True
+            return proposal
+        except (ValueError, TypeError, KeyError, IndexError, AttributeError):
+            return NeedsInput(questions=["Please clarify the authorized asset and requested maintenance action."])
