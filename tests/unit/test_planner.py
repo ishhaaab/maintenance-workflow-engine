@@ -112,3 +112,19 @@ def test_dataset_splits_are_complete_and_unique():
     assert len({" ".join(case["text"].lower().split()) for case in dev + test}) == 120
     for case in dev + test:
         parse_proposal(json.dumps(case["expected"]))
+
+
+async def test_provider_refusal_is_clarification_not_valid_plan():
+    body = {"choices": [{"message": {"content": None, "refusal": "Cannot provide this plan"}}]}
+    async with httpx.AsyncClient(
+        base_url="http://provider/v1/",
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=body)),
+    ) as client:
+        planner = ModelPlanner(client, Settings())
+        result = await planner.propose(
+            WorkflowCreate(text="Create an inspection ticket for P-17"),
+            CatalogProvider.from_file("fixtures/catalog.jsonl").get("tenant-a"),
+        )
+        assert isinstance(result, NeedsInput)
+        assert planner.last_schema_valid is False
+        assert planner.last_inference_response is True

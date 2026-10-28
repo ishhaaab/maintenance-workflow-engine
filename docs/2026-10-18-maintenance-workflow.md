@@ -324,11 +324,11 @@ Each task uses failing tests, minimal implementation, green verification, and a 
 
 **Interfaces:** Produce `TenantCatalog`, `CatalogProvider`, `CompiledPlan`, `validate_and_compile`, and async `Planner.propose`. The fixture planner returns a predefined proposal for a fixture request; it is not a production fallback that invents plans.
 
-- [ ] Write tests for authorized ticket/reservation compilation, unknown asset, foreign asset, incompatible part, missing reservation intent, ambiguous quantity, unsupported tool/URL, extra JSON fields, and injected instructions to bypass approval. Assert deterministic plan hash/action keys and zero mutation access from the planner.
-- [ ] Run `uv run pytest tests/unit/test_policy.py tests/unit/test_planner.py -q`; confirm red.
-- [ ] Implement catalog resolution, conservative supported-request intent checks, schema validation, and stable action compilation. Return `NeedsInput` for ambiguity. Persist keys derived from tenant/workflow/plan/action, not from attempt count or model-generated UUIDs.
-- [ ] Run the tests; verify a prompt requesting a reservation cannot authorize a different tenant's asset even when the proposal is valid JSON.
-- [ ] Commit policy/fixtures/prompt. Document supported request grammar and intentionally unsupported requests rather than implying general language understanding.
+- [x] Write tests for authorized ticket/reservation compilation, unknown asset, foreign asset, incompatible part, missing reservation intent, ambiguous quantity, unsupported tool/URL, extra JSON fields, and injected instructions to bypass approval. Assert deterministic plan hash/action keys and zero mutation access from the planner.
+- [x] Run `uv run pytest tests/unit/test_policy.py tests/unit/test_planner.py -q`; confirm red.
+- [x] Implement catalog resolution, conservative supported-request intent checks, schema validation, and stable action compilation. Return `NeedsInput` for ambiguity. Persist keys derived from tenant/workflow/plan/action, not from attempt count or model-generated UUIDs.
+- [x] Run the tests; verify a prompt requesting a reservation cannot authorize a different tenant's asset even when the proposal is valid JSON.
+- [x] Commit policy/fixtures/prompt. Document supported request grammar and intentionally unsupported requests rather than implying general language understanding.
 
 ### Task 3: MongoDB authority, admission idempotency, and leases
 
@@ -336,11 +336,11 @@ Each task uses failing tests, minimal implementation, green verification, and a 
 
 **Interfaces:** Produce `WorkflowStore`, `AdmissionResult`, the in-memory fake, and MongoDB adapter with the exact shared methods. Use server time in production lease/due updates; inject a clock only into the fake for deterministic tests.
 
-- [ ] Write integration tests for concurrent same-key admission, payload conflict, tenant-isolated keys, 20 concurrent claims with one winner, expired lease recovery, stale-token save/release/renew, revision conflict, protected-field mutation, and due-intent persistence. Test a crash after creation but before any Redis call.
+- [x] Write integration tests for concurrent same-key admission, payload conflict, tenant-isolated keys, 20 concurrent claims with one winner, expired lease recovery, stale-token save/release/renew, revision conflict, protected-field mutation, and due-intent persistence. Test a crash after creation but before any Redis call.
 - [ ] Start only the local test MongoDB and run `uv run pytest tests/integration/test_store.py -q`; verify red. Use a disposable test database, never an unscoped database drop or a user's existing database.
-- [ ] Implement unique indexes, single-document conditional updates, protected-field validation, server-time leases, bounded history, atomic due/wake-sequence changes, and 5-second enqueue-intent marking in `due_wakeups`. Fail save on expired/stale tokens with `LeaseLost`.
-- [ ] Run real Mongo tests plus fake-store contract tests. Confirm operations need no replica set, multi-document transaction, or Redis availability. For lease-expiry tests, set a test lease deadline in the past instead of sleeping 30 seconds.
-- [ ] Commit store/index initialization and runbook test-database isolation instructions. Do not call an in-memory mock proof of MongoDB atomicity.
+- [x] Implement unique indexes, single-document conditional updates, protected-field validation, server-time leases, bounded history, atomic due/wake-sequence changes, and 5-second enqueue-intent marking in `due_wakeups`. Fail save on expired/stale tokens with `LeaseLost`.
+- [x] Run real Mongo tests plus fake-store contract tests. Confirm operations need no replica set, multi-document transaction, or Redis availability. For lease-expiry tests, set a test lease deadline in the past instead of sleeping 30 seconds.
+- [x] Commit store/index initialization and runbook test-database isolation instructions. Do not call an in-memory mock proof of MongoDB atomicity.
 
 ### Task 4: Durable idempotent external simulators
 
@@ -348,11 +348,11 @@ Each task uses failing tests, minimal implementation, green verification, and a 
 
 **Interfaces:** Produce the ticket/reservation/lookup HTTP contracts. `ledger.apply(key: str, payload: dict, operation: Callable) -> StoredOutcome` executes effect + key ledger in one SQLite transaction. Simulator fault controls are disabled unless `ENABLE_FAULTS=true`.
 
-- [ ] Write tests that 20 concurrent identical keys create exactly one ticket/decrement, changed payload returns 409, stock shortage is stably skipped, committed outcomes survive process restart, and commit-then-error remains discoverable by lookup.
-- [ ] Run `uv run pytest tests/integration/test_simulators.py -q`; confirm red.
-- [ ] Implement separate durable SQLite ledgers with safe concurrent transaction handling, canonical payload hashes, no key TTL, and seedable pre-commit failure/post-commit response-loss/lookup-unavailable profiles. Run blocking SQLite work outside FastAPI's event loop.
-- [ ] Run tests using independent temporary database files and restarted app instances. Verify simulator effect counts group by logical workflow/action identity, so an accidentally changed key cannot hide duplication.
-- [ ] Commit simulators and fault-profile documentation. State that their idempotency guarantee is an explicit benchmark assumption.
+- [x] Write tests that 20 concurrent identical keys create exactly one ticket/decrement, changed payload returns 409, stock shortage is stably skipped, committed outcomes survive process restart, and commit-then-error remains discoverable by lookup.
+- [x] Run `uv run pytest tests/integration/test_simulators.py -q`; confirm red.
+- [x] Implement separate durable SQLite ledgers with safe concurrent transaction handling, canonical payload hashes, no key TTL, and seedable pre-commit failure/post-commit response-loss/lookup-unavailable profiles. Run blocking SQLite work outside FastAPI's event loop.
+- [x] Run tests using independent temporary database files and restarted app instances. Verify simulator effect counts group by logical workflow/action identity, so an accidentally changed key cannot hide duplication.
+- [x] Commit simulators and fault-profile documentation. State that their idempotency guarantee is an explicit benchmark assumption.
 
 ### Task 5: Typed HTTP gateways and ambiguity classification
 
@@ -360,11 +360,11 @@ Each task uses failing tests, minimal implementation, green verification, and a 
 
 **Interfaces:** Produce `EffectGateway`, `EffectResult`, and `LookupResult`. Results distinguish confirmed, no-effect business decline, retryable known-no-effect rejection, and unknown outcome. Lookup distinguishes confirmed, not found, and unavailable.
 
-- [ ] Write tests for normal success, stable replay, stock skip, payload conflict, request timeout after commit, malformed success JSON, 5xx with unknown commit status, and lookup failure. Assert no hidden HTTP retry and preservation of the original key/payload.
-- [ ] Run `uv run pytest tests/integration/test_gateways.py -q`; confirm red.
-- [ ] Implement HTTPX adapters with 10-second timeout and retries disabled. Pin external base URLs in settings, not model/user fields. Treat uncertain transport/5xx/malformed-response outcomes conservatively; never equate them with proven no effect.
-- [ ] Run gateway tests against actual simulator apps/HTTP transports and at least one subprocess network test. Assert unknown status cannot be converted to an automatic new-key submission.
-- [ ] Commit adapters and contract classifications. Any future real integration must pass these contracts or advertise no safe automatic replay.
+- [x] Write tests for normal success, stable replay, stock skip, payload conflict, request timeout after commit, malformed success JSON, 5xx with unknown commit status, and lookup failure. Assert no hidden HTTP retry and preservation of the original key/payload.
+- [x] Run `uv run pytest tests/integration/test_gateways.py -q`; confirm red.
+- [x] Implement HTTPX adapters with 10-second timeout and retries disabled. Pin external base URLs in settings, not model/user fields. Treat uncertain transport/5xx/malformed-response outcomes conservatively; never equate them with proven no effect.
+- [x] Run gateway tests against actual simulator apps/HTTP transports and at least one subprocess network test. Assert unknown status cannot be converted to an automatic new-key submission.
+- [x] Commit adapters and contract classifications. Any future real integration must pass these contracts or advertise no safe automatic replay.
 
 ### Task 6: Redis wakeups and recoverable dispatcher
 
@@ -372,11 +372,11 @@ Each task uses failing tests, minimal implementation, green verification, and a 
 
 **Interfaces:** Produce `WakeupBroker`, `BrokerMessage`, and `dispatch_once`. Consume MongoDB `due_wakeups`, not user/action payloads. Worker acknowledgment is separate from the durable runner result.
 
-- [ ] Write tests for duplicate publication, dispatcher death before publication, Redis failure after MongoDB admission, Redis data loss after an earlier publish, abandoned pending entries, and stale wake sequences. Assert due work is republished after the 5-second interval using controlled test timestamps.
+- [x] Write tests for duplicate publication, dispatcher death before publication, Redis failure after MongoDB admission, Redis data loss after an earlier publish, abandoned pending entries, and stale wake sequences. Assert due work is republished after the 5-second interval using controlled test timestamps.
 - [ ] Run `uv run pytest tests/integration/test_broker.py -q`; confirm red using local test Redis and MongoDB.
-- [ ] Implement stream/group creation idempotently, `XREADGROUP`, `XACK`, 60-second `XAUTOCLAIM`, dispatcher loop, and bounded exponential reconnect delay. Queue messages contain only workflow ID and wake sequence. Redis failure must not erase/unschedule MongoDB work.
-- [ ] Run integration tests and verify the dispatcher neither modifies approved plans nor treats enqueue acknowledgment as workflow completion.
-- [ ] Commit queue/dispatcher wiring. Document that the embedded MongoDB due intent replaces a multi-store atomic outbox transaction, with duplicate wakeups expected.
+- [x] Implement stream/group creation idempotently, `XREADGROUP`, `XACK`, 60-second `XAUTOCLAIM`, dispatcher loop, and bounded exponential reconnect delay. Queue messages contain only workflow ID and wake sequence. Redis failure must not erase/unschedule MongoDB work.
+- [x] Run integration tests and verify the dispatcher neither modifies approved plans nor treats enqueue acknowledgment as workflow completion.
+- [x] Commit queue/dispatcher wiring. Document that the embedded MongoDB due intent replaces a multi-store atomic outbox transaction, with duplicate wakeups expected.
 
 ### Task 7: Leased runner and approval-safe happy path
 
@@ -384,11 +384,11 @@ Each task uses failing tests, minimal implementation, green verification, and a 
 
 **Interfaces:** Produce `Runner.tick` and `TickResult`. Inject store, planner, catalog, gateways, and heartbeat control. A tick claims the workflow, does one phase/at most one external mutation, records state, and releases its current lease in `finally`.
 
-- [ ] Write tests for plan -> awaiting approval with zero effects, approved ticket then reservation in separate ticks, conditional skip, policy rejection, cancelled/terminal wakeup, and lease loss before submission. Before recovery is implemented, every ambiguous path must stop safely rather than blindly retry.
-- [ ] Run `uv run pytest tests/unit/test_runner.py tests/e2e/test_workflow.py -q`; confirm red.
-- [ ] Implement planning-call accounting, deterministic validation, approval checks, durable in-flight intent, single mutation submission, confirmed-result persistence, dependent ticket-ID resolution, heartbeat handling, and release/ack instructions. Never hold a database transaction during a call.
-- [ ] Run tests with fake store/planner/gateways plus one real-store/simulator happy path. Confirm an expired worker cannot write a result after another token owns the lease.
-- [ ] Commit the runner and happy path. Recovery acceptance is intentionally still incomplete until Task 9, so do not claim crash safety yet.
+- [x] Write tests for plan -> awaiting approval with zero effects, approved ticket then reservation in separate ticks, conditional skip, policy rejection, cancelled/terminal wakeup, and lease loss before submission. Before recovery is implemented, every ambiguous path must stop safely rather than blindly retry.
+- [x] Run `uv run pytest tests/unit/test_runner.py tests/e2e/test_workflow.py -q`; confirm red.
+- [x] Implement planning-call accounting, deterministic validation, approval checks, durable in-flight intent, single mutation submission, confirmed-result persistence, dependent ticket-ID resolution, heartbeat handling, and release/ack instructions. Never hold a database transaction during a call.
+- [x] Run tests with fake store/planner/gateways plus one real-store/simulator happy path. Confirm an expired worker cannot write a result after another token owns the lease.
+- [x] Commit the runner and happy path. Recovery acceptance is intentionally still incomplete until Task 9, so do not claim crash safety yet.
 
 ### Task 8: Authenticated HTTP admission, status, approval, and cancellation
 
@@ -396,11 +396,11 @@ Each task uses failing tests, minimal implementation, green verification, and a 
 
 **Interfaces:** Produce `create_app` and all specified HTTP routes. API commands use domain transitions and conditional store writes, not direct collection mutation or queue-only admission.
 
-- [ ] Write tests for 202 new/200 replay/409 changed admission, missing idempotency key 400, invalid key 401, foreign workflow 404, 16-KiB rejection, extra tenant field rejection, stale/hash-mismatched approval, replayed approval, cancellation races, and cancelled workflows retaining confirmed effects.
-- [ ] Run `uv run pytest tests/integration/test_api.py -q`; confirm red.
-- [ ] Implement tenant identity from API-key settings, body limits, domain-exception mapping, durable admission, exact approval, safe cancellation, status projection, and distinct liveness/readiness. Mongo-down admission is 503; Redis-down durable admission still succeeds with degraded broker status.
+- [x] Write tests for 202 new/200 replay/409 changed admission, missing idempotency key 400, invalid key 401, foreign workflow 404, 16-KiB rejection, extra tenant field rejection, stale/hash-mismatched approval, replayed approval, cancellation races, and cancelled workflows retaining confirmed effects.
+- [x] Run `uv run pytest tests/integration/test_api.py -q`; confirm red.
+- [x] Implement tenant identity from API-key settings, body limits, domain-exception mapping, durable admission, exact approval, safe cancellation, status projection, and distinct liveness/readiness. Mongo-down admission is 503; Redis-down durable admission still succeeds with degraded broker status.
 - [ ] Run API tests with HTTPX ASGI transport and real-store race cases. Prove no handler performs an LLM or external mutation call while handling admission/approval/cancellation.
-- [ ] Commit HTTP routes and request examples. Public responses/logs must not expose another tenant, provider secret, raw credentials, or mutable internal storage objects.
+- [x] Commit HTTP routes and request examples. Public responses/logs must not expose another tenant, provider secret, raw credentials, or mutable internal storage objects.
 
 ### Task 9: Bounded retry, reconciliation, and stale-worker recovery
 
@@ -408,11 +408,11 @@ Each task uses failing tests, minimal implementation, green verification, and a 
 
 **Interfaces:** Extend the existing tick implementation without changing public types. Implement the specified 5-submission/5-lookup/2-planner-call limits and 1/2/4/8-second scheduling.
 
-- [ ] Write cases for crash before mutation, commit then lost response, confirmed effect then crash before Mongo save, lease expiry during call, two overlapping workers, repeated lookup unavailability, key-conflict response, and non-idempotent adapter ambiguity. Assert no new key, no dependent action before confirmation, and `NEEDS_REVIEW` rather than false no-effect failure for unresolved outcomes.
-- [ ] Run `uv run pytest tests/integration/test_recovery.py -q`; verify new failure tests are actually exercised.
-- [ ] Implement abandoned `IN_FLIGHT` recovery via lookup, same-key replay only under the advertised contract, safe retry scheduling, bounded lookup exhaustion, and partial-outcome reporting. On `LeaseLost`, stop new submissions; let the next owner reconcile any call already sent.
-- [ ] Run recovery tests with MongoDB, both simulators, and real worker-process termination. Assert exactly the expected number of simulator effects per logical action, correct terminal state, and no stale state overwrite.
-- [ ] Commit recovery logic and the failure-model/guarantee document. Explicitly distinguish local fencing, downstream deduplication, durability, and the limits of cancellation.
+- [x] Write cases for crash before mutation, commit then lost response, confirmed effect then crash before Mongo save, lease expiry during call, two overlapping workers, repeated lookup unavailability, key-conflict response, and non-idempotent adapter ambiguity. Assert no new key, no dependent action before confirmation, and `NEEDS_REVIEW` rather than false no-effect failure for unresolved outcomes.
+- [x] Run `uv run pytest tests/integration/test_recovery.py -q`; verify new failure tests are actually exercised.
+- [x] Implement abandoned `IN_FLIGHT` recovery via lookup, same-key replay only under the advertised contract, safe retry scheduling, bounded lookup exhaustion, and partial-outcome reporting. On `LeaseLost`, stop new submissions; let the next owner reconcile any call already sent.
+- [x] Run recovery tests with MongoDB, both simulators, and real worker-process termination. Assert exactly the expected number of simulator effects per logical action, correct terminal state, and no stale state overwrite.
+- [x] Commit recovery logic and the failure-model/guarantee document. Explicitly distinguish local fencing, downstream deduplication, durability, and the limits of cancellation.
 
 ### Task 10: Compose deployment and clean-start operations
 
@@ -420,11 +420,11 @@ Each task uses failing tests, minimal implementation, green verification, and a 
 
 **Interfaces:** Produce independently startable `api`, `worker`, `dispatcher`, `ticketing`, `inventory`, `mongo`, and `redis` processes. Model serving is an optional separately configured endpoint, not a default large download.
 
-- [ ] Write an opt-in end-to-end test that starts isolated containers, initializes indexes/catalogs, submits a fixture-planned request, approves its returned hash, and verifies final state/effects after a worker restart.
+- [x] Write an opt-in end-to-end test that starts isolated containers, initializes indexes/catalogs, submits a fixture-planned request, approves its returned hash, and verifies final state/effects after a worker restart.
 - [ ] Run `uv run pytest tests/e2e/test_workflow.py -m compose -q`; confirm the missing deployment fails meaningfully.
-- [ ] Implement non-root application images, healthy dependency startup/reconnect, persistent Mongo/SQLite volumes, two worker processes, local-only ports, redacted environment validation, graceful shutdown, and separate initialization commands. Record tested image digests.
-- [ ] Run `docker compose config`, `docker compose up --build -d`, index/catalog initialization, and the opt-in end-to-end test. Verify a fresh environment works without paid keys and a second startup does not duplicate catalog/ledger records.
-- [ ] Commit deployment/runbook and stop only project-owned test containers. Never use broad Docker pruning or volume deletion; document explicit opt-in reset commands for this project's disposable data.
+- [x] Implement non-root application images, healthy dependency startup/reconnect, persistent Mongo/SQLite volumes, two worker processes, local-only ports, redacted environment validation, graceful shutdown, and separate initialization commands. Record tested image digests.
+- [x] Run `docker compose config`, `docker compose up --build -d`, index/catalog initialization, and the opt-in end-to-end test. Verify a fresh environment works without paid keys and a second startup does not duplicate catalog/ledger records.
+- [x] Commit deployment/runbook and stop only project-owned test containers. Never use broad Docker pruning or volume deletion; document explicit opt-in reset commands for this project's disposable data.
 
 ### Task 11: Real-model planner adapter and held-out evaluation
 
@@ -432,9 +432,9 @@ Each task uses failing tests, minimal implementation, green verification, and a 
 
 **Interfaces:** Produce the real async `Planner.propose` with provider settings, timeout, max two accounted calls, prompt/schema versions, and structured result validation. `evaluate_planner(cases_path: Path, planner: Planner, catalog: CatalogProvider) -> PlannerReport` has no mutation gateway.
 
-- [ ] Write tests for schema-valid/invalid JSON, fenced prose, provider timeout, refusal, injected actions, a second exhausted model call, and fixture/model metadata separation. Add dataset tests for 40 dev/80 test unique IDs, no duplicate normalized request text across splits, and complete expected labels.
-- [ ] Run `uv run pytest tests/unit/test_planner.py tests/unit/test_policy.py -q`; confirm the added real-adapter tests fail before implementation. Use a mocked HTTP provider for offline tests.
-- [ ] Implement the OpenAI-compatible adapter with SDK retries disabled, requested schema where supported, strict post-validation everywhere, conservative clarification on invalid/unsupported outputs, and no mutation tools. Construct/document synthetic evaluation cases and review their labels before use.
+- [x] Write tests for schema-valid/invalid JSON, fenced prose, provider timeout, refusal, injected actions, a second exhausted model call, and fixture/model metadata separation. Add dataset tests for 40 dev/80 test unique IDs, no duplicate normalized request text across splits, and complete expected labels.
+- [x] Run `uv run pytest tests/unit/test_planner.py tests/unit/test_policy.py -q`; confirm the added real-adapter tests fail before implementation. Use a mocked HTTP provider for offline tests.
+- [x] Implement the OpenAI-compatible adapter with SDK retries disabled, requested schema where supported, strict post-validation everywhere, conservative clarification on invalid/unsupported outputs, and no mutation tools. Construct/document synthetic evaluation cases and review their labels before use.
 - [ ] With user-approved local GPU or provider budget, tune only on 40 dev cases, freeze prompt/model/settings, and run all 80 held-out cases once. Report schema validity, field correctness, unsafe proposals separately from policy-blocked effects, clarification behavior, latency, and actual token/call counts.
 - [ ] Commit evaluation code, frozen prompt, permitted synthetic cases, and measured report. If no live model was run, mark this gate incomplete; do not relabel the fixture planner as GenAI integration.
 
@@ -444,11 +444,11 @@ Each task uses failing tests, minimal implementation, green verification, and a 
 
 **Interfaces:** Produce `run_fault_case(case: FaultCase, seed: int) -> FaultResult` and a 20-case by 10-seed report. `FaultCase` declares expected state, expected logical effect counts, injection point, bounded deadline, and whether human review is expected.
 
-- [ ] Write report tests that missing runs, mismatched effect counts, unknown states, or substituted fixture/live-model labels fail rather than disappear from the denominator. Pin the 20 scenario IDs listed below.
-- [ ] Run fault/report tests red, then implement only benchmark control, polling with a deadline, artifact capture, and assertion/report generation. Do not add retry-until-green behavior to the benchmark.
-- [ ] Execute all 200 cases against isolated local processes, using fixture plans and explicit benchmark approval. Capture request IDs, keys, state histories, simulator ledgers, and relevant redacted logs for every failure.
-- [ ] Verify every case against its expected state/effects. Expected manual-review cases are neither hidden errors nor successful automatic completion. Reruns are new labeled runs, not replacements for failed records.
-- [ ] Commit fault definitions, benchmark script, and actual report. If resource limits prevent the full matrix, state the exact completed subset and leave the full gate incomplete.
+- [x] Write report tests that missing runs, mismatched effect counts, unknown states, or substituted fixture/live-model labels fail rather than disappear from the denominator. Pin the 20 scenario IDs listed below.
+- [x] Run fault/report tests red, then implement only benchmark control, polling with a deadline, artifact capture, and assertion/report generation. Do not add retry-until-green behavior to the benchmark.
+- [x] Execute all 200 cases against isolated local processes, using fixture plans and explicit benchmark approval. Capture request IDs, keys, state histories, simulator ledgers, and relevant redacted logs for every failure.
+- [x] Verify every case against its expected state/effects. Expected manual-review cases are neither hidden errors nor successful automatic completion. Reruns are new labeled runs, not replacements for failed records.
+- [x] Commit fault definitions, benchmark script, and actual report. If resource limits prevent the full matrix, state the exact completed subset and leave the full gate incomplete.
 
 Required cases: duplicate admission; changed-payload replay; duplicate Redis message; dispatcher death before publish; Redis unavailable at admission; Redis data loss after publish; worker death before effect; ticket commit then response loss; reservation commit then response loss; worker death after effect before checkpoint; expired lease and stale save; concurrent workers; transient proven-no-effect rejection; permanent rejection; inventory unavailable; lookup repeatedly unavailable; non-idempotent downstream ambiguity; stale/mismatched approval; cross-tenant request/injection; safe cancellation with a previously confirmed ticket.
 
@@ -458,10 +458,10 @@ Required cases: duplicate admission; changed-payload replay; duplicate Redis mes
 
 **Interfaces:** Produce JSON logs keyed by workflow/action/attempt without raw request text/secrets, duration/counter definitions, fixture load script, and a clean-clone verification path.
 
-- [ ] Write tests proving API keys, provider keys, Mongo credentials, raw request text, and raw provider output are absent from logs. Write a load-report test separating admission time, approval wait, queue delay, processing duration, errors, and expected-review outcomes.
-- [ ] Run tests red, then implement redaction, structured event naming, CLI metrics/report output, and CI groups. Default CI is offline unit tests; real Mongo/Redis/HTTP integration and compose jobs are explicit separate jobs with visible skips/failures.
+- [x] Write tests proving API keys, provider keys, Mongo credentials, raw request text, and raw provider output are absent from logs. Write a load-report test separating admission time, approval wait, queue delay, processing duration, errors, and expected-review outcomes.
+- [x] Run tests red, then implement redaction, structured event naming, CLI metrics/report output, and CI groups. Default CI is offline unit tests; real Mongo/Redis/HTTP integration and compose jobs are explicit separate jobs with visible skips/failures.
 - [ ] Run `uv sync --frozen --extra dev`, `uv run pytest tests/unit -q`, integration tests with isolated Mongo/Redis/simulators, and the compose end-to-end suite. Record exact commands, counts, and environment.
-- [ ] Execute 100 workflows each at concurrency 1, 5, and 20 with the fixture planner and explicit approvals. Report observed p50/p95 and correctness, not an invented SLO. Repeat live-model latency separately if budget permits; never mix fixture and live numbers.
+- [x] Execute 100 workflows each at concurrency 1, 5, and 20 with the fixture planner and explicit approvals. Report observed p50/p95 and correctness, not an invented SLO. Repeat live-model latency separately if budget permits; never mix fixture and live numbers.
 - [ ] Commit all evidence and a two-minute reproducible demo script. Final review checks real-model status, tenant isolation, exact approval, effect counts, crash/Redis recovery, bounded uncertainty handling, secrets, license notices, and reproducible setup. Write resume claims only from completed measurements.
 
 ## Suggested milestone demos

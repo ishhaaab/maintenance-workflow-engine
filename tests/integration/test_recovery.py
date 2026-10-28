@@ -210,3 +210,27 @@ async def test_cancellation_rejects_unresolved_earlier_submission_during_replay(
                 await client.post(path, json={"expected_revision": w.revision})
             ).status_code == 200
             assert sum((await h.ticketing.get("/__effects")).json().values()) == 1
+
+
+async def test_key_payload_conflict_stops_without_accepting_wrong_effect(tmp_path, clock):
+    async with AsyncExitStack() as stack:
+        h = await harness(tmp_path, clock, stack)
+        w = await ready(h)
+        response = await h.ticketing.post(
+            "/tickets",
+            json={
+                "logical_action_id": "foreign-effect",
+                "asset_id": "P-17",
+                "priority": "normal",
+                "description": "different payload",
+            },
+            headers={"Idempotency-Key": w.actions[0].idempotency_key},
+        )
+        assert response.status_code == 200
+        await h.tick(w)
+        _, w = await h.tick(w)
+        assert w.state == "NEEDS_REVIEW"
+        assert w.actions[0].result is None
+        assert w.actions[0].submissions == 1
+        assert w.actions[1].submissions == 0
+        assert sum((await h.ticketing.get("/__effects")).json().values()) == 1

@@ -26,6 +26,11 @@ async def test_real_mongo_admission_claim_and_stale_worker(mongo_store):
     )
     assert sum(r.created for r in results) == 1
     workflow = results[0].workflow
+    other = await store.insert_or_get(
+        Workflow.new("b", "same", WorkflowCreate(text="different tenant"))
+    )
+    assert other.created
+    assert other.workflow.workflow_id != workflow.workflow_id
     with pytest.raises(Conflict):
         await store.insert_or_get(Workflow.new("a", "same", WorkflowCreate(text="changed")))
     with pytest.raises(NotFound):

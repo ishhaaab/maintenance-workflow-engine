@@ -26,6 +26,7 @@ async def test_approval_gated_ticket_then_reservation(tmp_path, clock, stock, re
         assert w.state == "SUCCEEDED"
         assert w.actions[1].status == reservation_status
         assert sum((await h.ticketing.get("/__effects")).json().values()) == 1
+        assert (await h.tick(w))[0].status == "not_claimed"
 
 
 async def test_lease_loss_before_submit_prevents_effect(tmp_path, clock):
@@ -63,3 +64,15 @@ async def test_runner_emits_committed_action_attempt_event(tmp_path, clock, capl
         assert started[0]["action_id"] == "ticket"
         assert started[0]["attempt"] == 1
         assert started[0]["workflow_id"] == w.workflow_id
+
+
+async def test_cancelled_wakeup_never_starts_planning_or_effects(tmp_path, clock):
+    from workflow_engine.domain import DomainEvent, transition
+
+    async with AsyncExitStack() as stack:
+        h = await harness(tmp_path, clock, stack)
+        w = await h.admit()
+        w = await h.store.save(transition(w, DomainEvent(kind="cancelled")), w.revision, None)
+        assert (await h.tick(w))[0].status == "not_claimed"
+        assert (await h.get(w)).planning_attempts == 0
+        assert (await h.ticketing.get("/__effects")).json() == {}
