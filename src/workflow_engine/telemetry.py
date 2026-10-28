@@ -3,10 +3,16 @@
 import json
 import logging
 import re
+from typing import get_args
 
-from .domain import utcnow
+from .domain import WorkflowState, utcnow
 
-EVENTS = {"workflow_tick", "lease_release_unavailable", "process_dependency_unavailable"}
+EVENTS = {
+    "workflow_tick",
+    "workflow_transition",
+    "lease_release_unavailable",
+    "process_dependency_unavailable",
+}
 OUTCOMES = {"not_claimed", "progressed", "waiting", "finished", "lease_lost"}
 
 
@@ -25,6 +31,13 @@ class JsonFormatter(logging.Formatter):
             data["outcome"] = record.outcome
         if getattr(record, "process_role", None) in {"worker", "dispatcher"}:
             data["process_role"] = record.process_role
+        if getattr(record, "action_id", None) in {"ticket", "reservation"}:
+            data["action_id"] = record.action_id
+        attempt = getattr(record, "attempt", None)
+        if isinstance(attempt, int) and 0 <= attempt <= 5:
+            data["attempt"] = attempt
+        if getattr(record, "state", None) in get_args(WorkflowState):
+            data["state"] = record.state
         return json.dumps(data)
 
 

@@ -1,7 +1,9 @@
 from contextlib import AsyncExitStack
 
+import httpx
 import pytest
 
+from tests.integration.test_api import app_for
 from tests.support import harness
 from workflow_engine.gateways import EffectResult
 
@@ -162,3 +164,49 @@ async def test_exhausted_ambiguous_replay_never_claims_definitive_failure(tmp_pa
             _, w = await h.tick(w)
         assert w.state == "NEEDS_REVIEW"
         assert w.actions[0].submissions == 5
+
+
+@pytest.mark.parametrize("advance_to_ready", [False, True])
+async def test_cancellation_rejects_unresolved_earlier_submission_during_replay(
+    tmp_path, clock, advance_to_ready
+):
+    async with AsyncExitStack() as stack:
+        h = await harness(tmp_path, clock, stack)
+        w = await ready(h)
+        gateway = h.runner.gateways["ticket"]
+        submit = gateway.submit
+        sent = []
+
+        async def lose_response(action):
+            sent.append(action)
+            return EffectResult(status="unknown", error="transport_or_malformed_response")
+
+        gateway.submit = lose_response
+        await h.tick(w)
+        _, w = await h.tick(w)  # NOT_FOUND permits same-key retry, not cancellation.
+        assert w.state == "RETRY_WAIT"
+        assert w.actions[0].has_ambiguous_submission
+        if advance_to_ready:
+            clock.advance(2)
+            _, w = await h.tick(w)
+            assert w.state == "READY"
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app_for(h)),
+            base_url="http://api",
+            headers={"X-API-Key": "a-key"},
+        ) as client:
+            path = f"/workflows/{w.workflow_id}/cancel"
+            assert (
+                await client.post(path, json={"expected_revision": w.revision})
+            ).status_code == 409
+            await submit(sent[0])  # The original delayed request finally commits.
+            gateway.submit = submit
+            if not advance_to_ready:
+                clock.advance(2)
+                await h.tick(w)
+            _, w = await h.tick(w)
+            assert w.actions[0].status == "CONFIRMED"
+            assert (
+                await client.post(path, json={"expected_revision": w.revision})
+            ).status_code == 200
+            assert sum((await h.ticketing.get("/__effects")).json().values()) == 1

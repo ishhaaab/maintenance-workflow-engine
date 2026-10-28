@@ -1,0 +1,20 @@
+{
+  "github_run_id": 40700067125,
+  "commit": "38c1078",
+  "adapter": "fixture",
+  "environment": {"python": "3.12.15", "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39", "cpu_count": 2},
+  "runs": [
+    {"concurrency": 1, "workflows": 100, "completed": 100, "expected_review": 0, "errors": 0, "effects_confirmed": 200,
+      "admission_ms": {"p50": 3.2387259999495654, "p95": 4.7503461499843525},
+      "active_ms": {"p50": 10992.279208999957, "p95": 11038.381289649918},
+      "approval_wait_ms": {"p50": 30.0, "p95": 56.05}, "queue_ms": {"p50": 959.5, "p95": 986.05}},
+    {"concurrency": 5, "workflows": 100, "completed": 100, "expected_review": 0, "errors": 0, "effects_confirmed": 200,
+      "admission_ms": {"p50": 5.4062609998482, "p95": 13.831153899946003},
+      "active_ms": {"p50": 11019.9392605, "p95": 11066.745799050139},
+      "approval_wait_ms": {"p50": 33.0, "p95": 59.05}, "queue_ms": {"p50": 952.0, "p95": 974.05}},
+    {"concurrency": 20, "workflows": 100, "completed": 100, "expected_review": 0, "errors": 0, "effects_confirmed": 200,
+      "admission_ms": {"p50": 48.352236000027915, "p95": 108.12600840017694},
+      "active_ms": {"p50": 11048.96290149995, "p95": 11211.44280760002},
+      "approval_wait_ms": {"p50": 108.0, "p95": 189.45}, "queue_ms": {"p50": 824.0, "p95": 959.0}}
+  ]
+}

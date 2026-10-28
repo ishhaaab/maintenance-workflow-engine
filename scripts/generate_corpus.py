@@ -95,7 +95,7 @@ def generate():
             case.update(
                 id=f"{split}-{index:03}",
                 source="synthetic-template",
-                label_review="agent-authored; human review pending",
+                label_review="agent-authored and reviewed against the bounded catalog/grammar; not human-reviewed",
             )
         Path(f"fixtures/planner_{split}.jsonl").write_text(
             "\n".join(json.dumps(case, ensure_ascii=False) for case in cases) + "\n",

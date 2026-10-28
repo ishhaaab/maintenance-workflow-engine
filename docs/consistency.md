@@ -10,6 +10,6 @@ The local SQLite simulators atomically commit effects and indefinite idempotency
 
 Unknown results, malformed success bodies and unclassified 5xx responses require reconciliation. Five submissions and five lookups per ambiguous episode are hard limits. Final unresolved ambiguity is NEEDS_REVIEW, including when a later known-no-effect rejection cannot exclude an earlier ambiguous submission. Key/payload conflict also stops for review.
 
-Cancellation prevents remaining work only when no current lease or uncertain/in-flight action exists. It never rolls back a ticket or stock reservation. A FAILED or CANCELLED workflow can retain a confirmed ticket. Stock shortage is a stored SKIPPED outcome and satisfies the conditional request.
+Cancellation prevents remaining work only when no current lease or uncertain/in-flight action exists. An action waiting for same-key replay still has an unresolved earlier submission, even though its scheduling status is PENDING; cancellation rejects it until the outcome is confirmed. It never rolls back a ticket or stock reservation. A FAILED or CANCELLED workflow can retain a confirmed ticket. Stock shortage is a stored SKIPPED outcome and satisfies the conditional request.
 
 MongoDB uses its default acknowledged journaled storage deployment here. This is a local single-node deployment, not protection against permanent disk loss. Backups, replicated disaster recovery, real integration contracts and production identity are outside the portfolio scope. No end-to-end exactly-once claim is made.

@@ -4,7 +4,7 @@
 
 Implemented: OpenAI-compatible asynchronous adapter, strict schema validation, tenant/request policy, 40 development and 80 held-out synthetic examples, and measured report generation.
 
-The corpus labels are agent-authored template labels. Human verification and an approved local GPU/provider budget are still required. The checked-in prompt has not been tuned against held-out model outputs.
+The corpus labels are agent-authored template labels, reviewed against the bounded catalog and grammar, not human-reviewed. An approved local GPU/provider budget is still required. The checked-in prompt has not been tuned against held-out model outputs.
 
 Offline tests cover valid/invalid structured output, unsupported fields, fenced prose, refusal-like empty output, provider timeout, call accounting, cross-tenant proposals and request-intent enforcement. Fixture report smoke tests cannot establish LLM accuracy.
 

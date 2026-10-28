@@ -1,8 +1,10 @@
+import httpx
 import pytest
 
 from workflow_engine.evaluation import evaluate_planner, summarize_faults, summarize_load
-from workflow_engine.planner import FixturePlanner
+from workflow_engine.planner import FixturePlanner, ModelPlanner
 from workflow_engine.policy import CatalogProvider
+from workflow_engine.settings import Settings
 
 
 def test_fault_report_rejects_missing_runs_wrong_effects_and_wrong_adapter():
@@ -71,3 +73,37 @@ async def test_fixture_evaluation_cannot_be_mislabeled_real_model():
     assert report["cases"] == 80
     assert report["adapter"] == "fixture"
     assert report["real_model_gate"] is False
+
+
+async def test_provider_outage_cannot_complete_real_model_gate():
+    async with httpx.AsyncClient(
+        base_url="http://provider/v1/",
+        transport=httpx.MockTransport(lambda request: httpx.Response(503)),
+    ) as client:
+        planner = ModelPlanner(client, Settings(model_revision="recorded-test-revision"))
+        report = await evaluate_planner(
+            "fixtures/planner_test.jsonl",
+            planner,
+            CatalogProvider.from_file("fixtures/catalog.jsonl"),
+        )
+    assert len(report["results"]) == 80
+    assert all(result["error"] == "provider_unavailable" for result in report["results"])
+    assert report["real_model_gate"] is False
+    assert report["inference_responses"] == 0
+
+
+async def test_completed_model_evaluation_does_not_require_perfect_predictions():
+    response = {"choices": [{"message": {"content": "not valid JSON"}}]}
+    async with httpx.AsyncClient(
+        base_url="http://provider/v1/",
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=response)),
+    ) as client:
+        planner = ModelPlanner(client, Settings(model_revision="recorded-test-revision"))
+        report = await evaluate_planner(
+            "fixtures/planner_test.jsonl",
+            planner,
+            CatalogProvider.from_file("fixtures/catalog.jsonl"),
+        )
+    assert report["schema_valid_rate"] == 0
+    assert report["inference_responses"] == 80
+    assert report["real_model_gate"] is True

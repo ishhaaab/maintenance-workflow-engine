@@ -134,11 +134,18 @@ async def test_fault_case(case, seed, mongo_store, tmp_path):
                     "reservation": HttpEffectGateway(inventory, "reservation"),
                 }
                 runner = Runner(store, planner, catalog, gateways)
+                admission_broker = broker
+                if case["id"] == "redis_unavailable_at_admission":
+                    unavailable_redis = Redis.from_url(
+                        "redis://127.0.0.1:1", socket_connect_timeout=0.1, socket_timeout=0.1
+                    )
+                    stack.push_async_callback(unavailable_redis.aclose)
+                    admission_broker = RedisWakeupBroker(unavailable_redis)
                 app = create_app(
                     Settings(api_keys={"test-a": "tenant-a", "test-b": "tenant-b"}),
                     store,
                     catalog,
-                    broker,
+                    admission_broker,
                 )
                 api = await stack.enter_async_context(
                     httpx.AsyncClient(
@@ -153,6 +160,14 @@ async def test_fault_case(case, seed, mongo_store, tmp_path):
                 assert admission.status_code == 202
                 workflow_id = admission.json()["workflow_id"]
                 path = "/workflows/" + workflow_id
+                if case["id"] == "redis_unavailable_at_admission":
+                    readiness = await api.get("/health/ready")
+                    assert readiness.json()["broker"] is False
+                    assert (await store.get(workflow_id, "tenant-a")).state == "PENDING_PLAN"
+                    assert await dispatch_once(store, broker) == 1
+                    recovered = await broker.receive("recovered-broker")
+                    assert recovered.wakeup.workflow_id == workflow_id
+                    await broker.ack(recovered.message_id)
 
                 async def current():
                     return await store.get(workflow_id, "tenant-a")
@@ -239,30 +254,6 @@ async def test_fault_case(case, seed, mongo_store, tmp_path):
                     )
                     await tick()
                 else:
-                    if name == "redis_unavailable_at_admission":
-                        dead = Redis.from_url(
-                            "redis://127.0.0.1:1", socket_connect_timeout=0.1, socket_timeout=0.1
-                        )
-                        try:
-                            offline_app = create_app(
-                                Settings(api_keys={"test-a": "tenant-a"}),
-                                store,
-                                catalog,
-                                RedisWakeupBroker(dead),
-                            )
-                            async with httpx.AsyncClient(
-                                transport=httpx.ASGITransport(app=offline_app),
-                                base_url="http://api",
-                                headers={"X-API-Key": "test-a"},
-                            ) as offline:
-                                replay = await offline.post(
-                                    "/workflows",
-                                    json={"text": REQUEST},
-                                    headers={"Idempotency-Key": "admission"},
-                                )
-                                assert replay.status_code == 200
-                        finally:
-                            await dead.aclose()
                     await tick()
                 workflow = await current()
                 if workflow.state == "AWAITING_APPROVAL":

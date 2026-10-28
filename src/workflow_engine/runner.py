@@ -47,7 +47,13 @@ class Runner:
     async def _save(self, workflow, event, lease, lost):
         if lost.is_set():
             raise LeaseLost("Heartbeat lost")
-        return await self.store.save(transition(workflow, event), workflow.revision, lease.token)
+        saved = await self.store.save(transition(workflow, event), workflow.revision, lease.token)
+        fields = {"workflow_id": saved.workflow_id, "state": saved.state}
+        if event.action_id:
+            action = next(a for a in saved.actions if a.action_id == event.action_id)
+            fields.update(action_id=action.action_id, attempt=action.submissions)
+        log.info("workflow_transition", extra=fields)
+        return saved
 
     async def tick(self, workflow_id: str, worker_id: str) -> TickResult:
         lease = await self.store.claim(workflow_id, worker_id, self.lease_s)

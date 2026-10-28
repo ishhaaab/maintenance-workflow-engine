@@ -98,6 +98,7 @@ async def evaluate_planner(cases_path, planner, catalog):
                 "unauthorized_or_unrequested_proposal": unsafe,
                 "latency_ms": (time.perf_counter() - start) * 1000,
                 "usage": dict(getattr(planner, "last_usage", {})),
+                "inference_response": bool(getattr(planner, "last_inference_response", False)),
                 "error": error,
             }
         )
@@ -110,7 +111,14 @@ async def evaluate_planner(cases_path, planner, catalog):
         "environment": environment(),
         "cases": count,
         "calls": count,
-        "real_model_gate": planner.metadata["adapter"] == "model" and count == 80,
+        "inference_responses": sum(r["inference_response"] for r in results),
+        "real_model_gate": (
+            planner.metadata["adapter"] == "model"
+            and count == 80
+            and all(r["inference_response"] and r["error"] is None for r in results)
+            and planner.metadata.get("model_revision")
+            not in {None, "unrecorded", "record-before-evaluation"}
+        ),
         "schema_valid_rate": sum(r["schema_valid"] for r in results) / count,
         "exact_required_field_accuracy": sum(r["exact_required_fields"] for r in results) / count,
         "unauthorized_proposal_rate": sum(

@@ -1,6 +1,9 @@
+import asyncio
 from contextlib import AsyncExitStack
 
 import httpx
+import pytest
+from pymongo.errors import ServerSelectionTimeoutError
 
 from tests.support import REQUEST, harness
 from workflow_engine.api import create_app
@@ -99,3 +102,49 @@ async def test_readiness_degrades_without_losing_admission(tmp_path, clock):
             response = await client.get("/health/ready")
             assert response.status_code == 200
             assert response.json()["status"] == "degraded"
+
+
+async def test_mongo_down_rejects_admission_without_claiming_durability(tmp_path, clock):
+    async with AsyncExitStack() as stack:
+        h = await harness(tmp_path, clock, stack)
+
+        async def unavailable(*args):
+            raise ServerSelectionTimeoutError("mongodb://user:secret@unavailable")
+
+        h.store.insert_or_get = unavailable
+        h.store.ping = unavailable
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app_for(h)),
+            base_url="http://api",
+            headers={"X-API-Key": "a-key", "Idempotency-Key": "key"},
+        ) as client:
+            response = await client.post("/workflows", json={"text": REQUEST})
+            assert response.status_code == 503
+            assert "secret" not in response.text
+            assert (await client.get("/health/ready")).status_code == 503
+
+
+@pytest.mark.integration
+async def test_real_store_approval_cancellation_race_has_one_winner(mongo_store, tmp_path, clock):
+    async with AsyncExitStack() as stack:
+        h = await harness(tmp_path, clock, stack, store=mongo_store)
+        w = await h.admit()
+        await h.tick(w)
+        w = await h.get(w)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app_for(h)),
+            base_url="http://api",
+            headers={"X-API-Key": "a-key"},
+        ) as client:
+            path = f"/workflows/{w.workflow_id}"
+            responses = await asyncio.gather(
+                client.post(
+                    path + "/approve",
+                    json={"expected_revision": w.revision, "plan_hash": w.plan_hash},
+                ),
+                client.post(path + "/cancel", json={"expected_revision": w.revision}),
+            )
+            assert sum(response.status_code in {200, 202} for response in responses) == 1
+            assert sum(response.status_code == 409 for response in responses) == 1
+            assert (await h.get(w)).state in {"READY", "CANCELLED"}
+            assert (await h.ticketing.get("/__effects")).json() == {}

@@ -144,6 +144,12 @@ class Action(Model):
     result: dict | None = None
     last_error: ShortText | None = None
 
+    @property
+    def unresolved(self) -> bool:
+        return self.status in {"IN_FLIGHT", "UNKNOWN"} or (
+            self.has_ambiguous_submission and self.status not in {"CONFIRMED", "SKIPPED"}
+        )
+
 
 class HistoryEntry(Model):
     at: datetime
@@ -200,6 +206,8 @@ class Workflow(Model):
     def invariants(self):
         if self.state in PASSIVE and self.next_run_at is not None:
             raise ValueError("Passive workflow cannot have due work")
+        if self.state == "CANCELLED" and any(a.unresolved for a in self.actions):
+            raise ValueError("Cancellation cannot abandon an unresolved submission")
         ids = [a.action_id for a in self.actions]
         if ids not in ([], ["ticket"], ["ticket", "reservation"]):
             raise ValueError("Invalid action order")
@@ -351,7 +359,7 @@ def transition(workflow: Workflow, event: DomainEvent) -> Workflow:
         require(
             w.state in {"PENDING_PLAN", "NEEDS_INPUT", "AWAITING_APPROVAL", "READY", "RETRY_WAIT"}
         )
-        require(not any(a.status in {"IN_FLIGHT", "UNKNOWN"} for a in w.actions))
+        require(not any(a.unresolved for a in w.actions))
         stop("CANCELLED")
     else:
         raise Conflict("Unknown event")

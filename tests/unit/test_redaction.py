@@ -27,3 +27,17 @@ def test_safe_workflow_event_keeps_useful_fields():
     result = json.loads(JsonFormatter().format(record))
     assert result["workflow_id"] == record.workflow_id
     assert result["outcome"] == "progressed"
+
+
+def test_transition_log_retains_action_and_attempt_without_raw_arguments():
+    record = logging.LogRecord("test", logging.INFO, __file__, 1, "workflow_transition", (), None)
+    record.action_id = "ticket"
+    record.attempt = 2
+    record.state = "RECONCILING"
+    record.arguments = {"description": "private request"}
+    result = json.loads(JsonFormatter().format(record))
+    assert result["event"] == "workflow_transition"
+    assert result["action_id"] == "ticket"
+    assert result["attempt"] == 2
+    assert result["state"] == "RECONCILING"
+    assert "private" not in json.dumps(result)

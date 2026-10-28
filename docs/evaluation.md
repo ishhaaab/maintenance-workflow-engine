@@ -6,7 +6,7 @@ Keep model quality, execution reliability and fixture throughput separate. All r
 
 `fixtures/planner_dev.jsonl` has 40 synthetic development examples. `fixtures/planner_test.jsonl` has 80 held-out examples. Both are generated from explicit templates, with no duplicated normalized request text or ID across splits. They contain related templates, so they are not independent evidence of broad natural-language generalization.
 
-Labels were authored by the implementing agent from explicit catalog/grammar templates. Human label review is pending and recorded in every example. Freeze the corpus, prompt, model revision and decoding settings before a held-out real-model run. Do not tune on the held-out results.
+Labels were authored and reviewed by the implementing agent against explicit catalog/grammar templates. They have not been human-reviewed; this provenance is recorded in every example. Freeze the corpus, prompt, model revision and decoding settings before a held-out real-model run. Do not tune on the held-out results.
 
 The fixture smoke test is useful for checking report machinery only:
 

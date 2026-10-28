@@ -72,9 +72,11 @@ class ModelPlanner:
         # Evaluation is sequential; these diagnostics never enter workflow logs.
         self.last_usage = {}
         self.last_schema_valid = False
+        self.last_inference_response = False
 
     async def propose(self, request: WorkflowCreate, catalog: TenantCatalog) -> PlanProposal:
         self.last_usage, self.last_schema_valid = {}, False
+        self.last_inference_response = False
         headers = {}
         if self.settings.model_key.get_secret_value():
             headers["Authorization"] = "Bearer " + self.settings.model_key.get_secret_value()
@@ -123,6 +125,9 @@ class ModelPlanner:
                 and isinstance(value, int)
             }
             message = body["choices"][0]["message"]
+            self.last_inference_response = isinstance(message.get("content"), str) or isinstance(
+                message.get("refusal"), str
+            )
             if message.get("refusal"):
                 raise ValueError("Refused")
             proposal = parse_proposal(message["content"])
