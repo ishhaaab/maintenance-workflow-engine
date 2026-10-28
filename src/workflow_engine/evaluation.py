@@ -19,6 +19,27 @@ def environment():
     }
 
 
+class RunJournal:
+    """Append-only evidence survives a load process being terminated before its summary."""
+
+    def __init__(self, output):
+        self.output = Path(output)
+
+    def __enter__(self):
+        if self.output.exists():
+            raise FileExistsError(self.output)
+        self.output.parent.mkdir(parents=True, exist_ok=True)
+        self.file = self.output.with_suffix(".jsonl").open("x", encoding="utf-8")
+        return self
+
+    def record(self, result):
+        self.file.write(json.dumps(result) + "\n")
+        self.file.flush()
+
+    def __exit__(self, *_):
+        self.file.close()
+
+
 def percentiles(values):
     if not values:
         return {"p50": None, "p95": None}

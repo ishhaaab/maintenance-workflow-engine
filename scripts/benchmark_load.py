@@ -11,7 +11,7 @@ from uuid import uuid4
 
 import httpx
 
-from workflow_engine.evaluation import environment, summarize_load
+from workflow_engine.evaluation import RunJournal, environment, summarize_load
 
 REQUEST = "Create an inspection ticket for pump P-17 and reserve one seal kit if available."
 
@@ -119,21 +119,26 @@ async def run(args):
         "timing_note": "Active duration is client-observed completion time minus persisted approval wait. Queue delay is admission to first planning start. All hosts must use synchronized UTC for cross-process event intervals.",
         "runs": [],
     }
-    async with httpx.AsyncClient(
-        base_url=args.url,
-        headers={"X-API-Key": key},
-        timeout=10,
-        transport=httpx.AsyncHTTPTransport(retries=0),
-        trust_env=False,
-    ) as client:
-        for concurrency in [1, 5, 20]:
-            semaphore = asyncio.Semaphore(concurrency)
-            records = await asyncio.gather(
-                *(run_one(client, semaphore, args.timeout) for _ in range(args.count))
-            )
-            report["runs"].append(
-                {"concurrency": concurrency, **summarize_load(records), "results": records}
-            )
+    with RunJournal(output) as journal:
+        async with httpx.AsyncClient(
+            base_url=args.url,
+            headers={"X-API-Key": key},
+            timeout=10,
+            transport=httpx.AsyncHTTPTransport(retries=0),
+            trust_env=False,
+        ) as client:
+            for concurrency in [1, 5, 20]:
+                semaphore = asyncio.Semaphore(concurrency)
+                records = []
+                for completed in asyncio.as_completed(
+                    [run_one(client, semaphore, args.timeout) for _ in range(args.count)]
+                ):
+                    record = await completed
+                    journal.record({"concurrency": concurrency, **record})
+                    records.append(record)
+                report["runs"].append(
+                    {"concurrency": concurrency, **summarize_load(records), "results": records}
+                )
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("x", encoding="utf-8") as file:
         json.dump(report, file, indent=2)

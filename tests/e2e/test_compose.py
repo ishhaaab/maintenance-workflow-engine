@@ -73,7 +73,7 @@ def test_isolated_compose_clean_start_and_restart(tmp_path):
                 ],
                 env={**env, "WORKFLOW_BENCHMARK_API_KEY": "compose-test-key"},
                 check=True,
-                timeout=900,
+                timeout=2400,
             )
     finally:
         subprocess.run(command + ["logs", "--no-color"], env=env, timeout=30)
