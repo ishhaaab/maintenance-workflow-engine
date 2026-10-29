@@ -51,3 +51,22 @@ Source plan: `docs/2026-10-18-maintenance-workflow.md`.
 ## Handoff
 
 All implementation, review corrections, fault/load measurements and repository documentation are complete. Task 11's real-model measurement remains open because no inference resources or budget were approved. This limits model-quality claims, not the completed fixture-backed reliability measurements. The [verification record](verification.md) links exact commands, counts and CI runs; [review notes](review.md) explain the three corrected findings.
+
+## Task 11 continuation: approved local inference
+
+The user approved downloading a 7B model for live evaluation on 2026-10-29. This supersedes the earlier resource blocker. The machine has an RTX 3060 Laptop GPU with 6 GiB VRAM, a Ryzen 7 5800H and 13.9 GiB usable RAM. Use the existing Qwen2.5-7B-Instruct choice in Q4_K_M format and a pinned portable llama.cpp CUDA runtime.
+
+The user cancelled the slow agent download and supplied both Q4_0 shards in `model/`. Both files match the official pinned Hugging Face revision's SHA256 hashes. Use this supplied quantization for the measured run and identify it as Q4_0 throughout. The already downloaded CUDA runtime archives also match their published SHA256 hashes. Local weights are excluded from Git and Docker build contexts.
+
+- [x] Download and verify model/runtime hashes; start a localhost-only endpoint.
+- [x] Run development cases, inspect failures and settle prompt/settings using development evidence only.
+- [ ] Freeze model, prompt, corpus and server settings; run the 80 held-out cases once.
+- [ ] Publish measured evidence, verify the completed gate, stop the evaluation server and sync GitHub.
+
+Development run 1 completed 40 genuine inference responses with valid schema, 14 exact matches and two policy-blocked proposals. All 24 valid-plan mismatches omitted the required final period in ticket descriptions; the two other mismatches guessed an asset from unsupported location references. Median request latency was 1.829 seconds. Preserve this baseline in `artifacts/planner-qwen-q4_0-dev-1`. First tuning hypothesis: explicitly describe the period as a concatenated part of the JSON field value.
+
+Development run 2 confirmed the punctuation hypothesis: all 24 valid requests now match exactly. Overall results were 36/40 exact matches, one schema-invalid output and three policy-blocked proposals. Remaining failures guessed an unknown/ambiguous asset or substituted a part with an invalid quantity. Second tuning hypothesis: make exact catalog matching and quantity validation explicit prerequisites to constructing a plan. No held-out responses have been generated or used for tuning.
+
+Development run 3 removed all schema-valid unauthorized proposals, but exact/schema accuracy fell to 31/40. Eight otherwise correct plans used the schema class name `ExecutablePlan` instead of the literal discriminator `plan`; one clarification question exceeded 200 characters. Third tuning hypothesis: explicitly distinguish schema names from JSON discriminator values and state the question length bound. Preserve the regression as a separate measured development run.
+
+Development run 4 matched all 40 labels, with schema-valid rate 1.0, zero unauthorized proposals and clarification precision/recall 1.0. Median latency was 1.825 seconds. Freeze this prompt, Q4_0 weights, corpus, catalog and server settings in `reports/planner-qwen-q4_0-freeze.json` before the held-out pass. No held-out tuning is permitted. The complete local suite still passes: 87 passed, 26 service-dependent skips.

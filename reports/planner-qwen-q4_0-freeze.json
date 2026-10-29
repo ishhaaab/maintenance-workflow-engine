@@ -1,0 +1,57 @@
+{
+  "frozen_on": "2026-10-29",
+  "protocol": "Four development passes of 40 cases; freeze before one 80-case held-out pass. No tuning on held-out responses.",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "weights_repository": "Qwen/Qwen2.5-7B-Instruct-GGUF",
+  "weights_revision": "bb5d59e06d9551d752d08b292a50eb208b07ab1f",
+  "quantization": "Q4_0",
+  "weights_sha256": {
+    "qwen2.5-7b-instruct-q4_0-00001-of-00002.gguf": "09cda9ec3aff8b5d3a760ddd16d26351e2dbf01f5c4ad4d05e18ac666708a6a2",
+    "qwen2.5-7b-instruct-q4_0-00002-of-00002.gguf": "db92b5c30da42fbfa33af1c501f4be6fcba1c85348d879d794b475154c0fe564"
+  },
+  "runtime": "llama.cpp b11960 / 0.8.0-dev",
+  "runtime_commit": "8642541b255bfb5dc39cd351a178be09013a55d6",
+  "cuda": "12.4",
+  "runtime_archive_sha256": {
+    "llama-b11960-bin-win-cuda-12.4-x64.zip": "8d9d819261de10cc2f03921b8b79c779c5c458e21edb60c170ee30a7d462d684",
+    "cudart-llama-bin-win-cuda-12.4-x64.zip": "8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6"
+  },
+  "inputs_sha256_utf8_lf": {
+    "prompts/maintenance_v1.txt": "63f45311ab835a357e378e41c38c4d2e31540ab94f98c3bb21c1f9c5ca594739",
+    "fixtures/catalog.jsonl": "02677873607c9ef7e4d056eb7e5bdd37ec777e9ebba3936536df9abe6dc6b262",
+    "fixtures/planner_dev.jsonl": "d96bf820b2ca6343d87b9a74abad936a35188d8da64172472501adec8ffb2c63",
+    "fixtures/planner_test.jsonl": "02f1dbc2a95056d27b4bf2f208e6b10756250b961265ef84adc707589c3cde8b"
+  },
+  "request_settings": {
+    "temperature": 0,
+    "max_tokens": 512,
+    "response_format": "json_object",
+    "timeout_s": 15,
+    "retries": 0
+  },
+  "server_settings": {
+    "context_tokens": 4096,
+    "parallel_slots": 1,
+    "gpu_layers": "all",
+    "fit": "off",
+    "flash_attention": "on",
+    "batch_size": 512,
+    "ubatch_size": 128,
+    "cpu_threads": 6,
+    "seed": 42,
+    "top_k": 0,
+    "top_p": 1,
+    "min_p": 0,
+    "repeat_penalty": 1,
+    "prompt_cache": false,
+    "ram_prompt_cache_mib": 0,
+    "startup_warmup": true
+  },
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "vram_mib": 6144,
+    "driver": "621.01",
+    "cpu": "AMD Ryzen 7 5800H",
+    "usable_ram_gib": 13.9
+  }
+}

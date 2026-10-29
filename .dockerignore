@@ -3,6 +3,7 @@
 .env
 .env.*
 data
+model
 artifacts
 .superpowers
 __pycache__

@@ -11,6 +11,7 @@ htmlcov/
 .superpowers/
 .worktrees/
 data/
+model/
 *.sqlite*
 artifacts/
 dist/
