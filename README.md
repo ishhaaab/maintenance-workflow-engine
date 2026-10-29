@@ -2,23 +2,25 @@
 
 [![Verification](https://github.com/ishhaaab/maintenance-workflow-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/ishhaaab/maintenance-workflow-engine/actions/workflows/ci.yml)
 
-An asynchronous Python backend that turns a maintenance request into a validated plan, waits for approval, then creates a simulated ticket and optionally reserves a simulated part. It recovers work after worker crashes and Redis message loss without blindly repeating uncertain external mutations.
+A Python backend for approval-gated maintenance requests. Submit a request, review the plan, and approve it before the worker creates a ticket or reserves a part. Both integrations are local simulators.
+
+The main problem this project tackles is recovery. If a worker crashes after sending a request, did the ticket get created? The engine records each attempt and looks up uncertain results by their original idempotency key before deciding whether to retry.
 
 ```text
-Request → LLM proposal → deterministic policy → exact-plan approval
-                                                    ↓
-MongoDB workflow + due intent → Redis wakeup → leased runner
-                                                    ↓
-                                  ticket → conditional reservation
-                                                    ↓
-                                  uncertain outcome → key lookup
+Request → proposed plan → policy checks → approval
+                                            ↓
+                                     create ticket
+                                            ↓
+                                reserve part if available
 ```
 
-The model cannot invoke mutation tools. MongoDB is the authority; Redis carries replaceable notifications. External effects rely on the simulators' durable idempotency contracts. This project makes no end-to-end exactly-once claim.
+The planner can use a local LLM, but it cannot create tickets or reserve stock. Policy code checks its proposal against the request and tenant catalog. Approval applies to the hash of that exact validated plan.
+
+This is a maintenance-administration portfolio project, not an equipment control system. It does not actuate equipment, certify repairs, or make safety decisions.
 
 ## Run locally
 
-Requirements: Python 3.12, [uv](https://docs.astral.sh/uv/), and Docker with Compose v2. GitHub Actions runs the Linux integration and container checks independently of your workstation.
+You'll need Python 3.12, [uv](https://docs.astral.sh/uv/), and Docker with Compose v2.
 
 ```sh
 git clone https://github.com/ishhaaab/maintenance-workflow-engine.git
@@ -30,49 +32,65 @@ docker compose config --quiet
 docker compose up --build -d --wait
 ```
 
-PowerShell uses `Copy-Item .env.example .env` instead of `cp`. Container ports bind only to `127.0.0.1`. Startup initializes indexes idempotently; catalog data is a versioned read-only fixture. No paid key or model download is needed in fixture mode.
+In PowerShell, use `Copy-Item .env.example .env` to copy the file.
 
-- API and OpenAPI documentation: <http://127.0.0.1:8000/docs>
+The default configuration uses a fixture planner. You can run the demo without downloading a model or paying for an API. To use a local model instead, see the [evaluation instructions](docs/evaluation.md).
+
+All exposed ports bind to `127.0.0.1`.
+
+- API documentation: <http://127.0.0.1:8000/docs>
 - MongoDB: `mongodb://127.0.0.1:28017`
 - Redis: `redis://127.0.0.1:26379/0`
 - Ticket and inventory simulators: ports 8001 and 8002
 
-### Two-minute demo
+### Try a request
 
-Set `WORKFLOW_DEMO_API_KEY` to your tenant-A key, then run:
+Set the `WORKFLOW_DEMO_API_KEY` environment variable to the key mapped to `tenant-a` in your `.env`, then run:
 
 ```sh
 uv run python scripts/demo.py
 ```
 
-This prints the validated plan and its hash, with zero external effects. To authorize that synthetic demonstration explicitly:
+The script submits this request:
+
+> Create an inspection ticket for pump P-17 and reserve one seal kit if available.
+
+It prints the validated plan and its hash, then stops at `AWAITING_APPROVAL`. No ticket or reservation is created.
+
+To submit a new demo request and approve its plan:
 
 ```sh
 uv run python scripts/demo.py --approve
 ```
 
-The request is:
+The API supports a [limited request grammar](docs/request-format.md), not arbitrary maintenance instructions. Unsupported or ambiguous requests end at `NEEDS_INPUT`. To clarify a request, submit a new one.
 
-> Create an inspection ticket for pump P-17 and reserve one seal kit if available.
+## API
 
-The API accepts a bounded [request grammar](docs/request-format.md). Unsupported or ambiguous requests become `NEEDS_INPUT`. Clarifications are new requests in this version.
-
-## HTTP contracts
-
-Authenticated routes require `X-API-Key`. Tenant identity comes from configuration, never the request body or model.
+Workflow routes require `X-API-Key`. The configured key determines the tenant, not the request body or model output.
 
 | Route | Purpose |
 | --- | --- |
-| `POST /workflows` | Admit `{ "text": "..." }` durably; requires `Idempotency-Key`. New request 202, replay 200, changed payload 409. |
+| `POST /workflows` | Save `{ "text": "..." }`. Requires `Idempotency-Key`. Returns 202 for a new request, 200 for a replay, or 409 if the same key has a different payload. |
 | `GET /workflows/{id}` | Tenant-scoped state, revision, plan, approvals and action results. Foreign IDs return 404. |
-| `POST /workflows/{id}/approve` | `{ "expected_revision": 2, "plan_hash": "..." }`. Exact approved-hash replay returns 200. |
+| `POST /workflows/{id}/approve` | Approve with `{ "expected_revision": 2, "plan_hash": "..." }`. Repeating approval for the same approved hash returns 200. |
 | `POST /workflows/{id}/cancel` | `{ "expected_revision": 2 }`. Active leases and uncertain/in-flight actions return 409. |
 | `GET /health/live` | Process liveness. |
 | `GET /health/ready` | Mongo failure returns 503; Redis failure returns 200 with explicit degraded status. |
 
-Cancellation does not undo a confirmed ticket. Stock shortage is a stored `SKIPPED` reservation. Unresolved effects end at `NEEDS_REVIEW`; confirmed partial outcomes remain visible.
+Cancellation does not undo a confirmed ticket. If stock is unavailable, the reservation is recorded as `SKIPPED`. If the engine cannot resolve an uncertain action, the workflow ends at `NEEDS_REVIEW` and retains any confirmed results.
 
-## Verify it
+## How recovery works
+
+MongoDB stores workflow state, approvals, action attempts and scheduling information. Redis Streams notify workers that work is due. If Redis loses a notification, the dispatcher can publish it again from MongoDB.
+
+Workers claim time-limited leases. Revision and lease checks prevent a stale worker from overwriting newer state. Those checks do not stop a downstream service from completing an earlier request, so the ticket and inventory simulators also keep durable SQLite idempotency records.
+
+A timeout does not mean an action failed. The runner looks up the original key, records confirmed results, and only replays an action when the downstream contract permits it. Retries and lookups have limits. Unresolved outcomes require review rather than an endless retry loop.
+
+Duplicate prevention depends on those downstream idempotency contracts. This project does not claim end-to-end exactly-once execution. See [consistency guarantees](docs/consistency.md) for the assumptions and failure cases.
+
+## Tests
 
 ```sh
 uv run pytest tests/unit -q
@@ -80,44 +98,35 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-For real MongoDB/Redis tests, set `TEST_MONGO_URL` and `TEST_REDIS_URL` to isolated test services, then run:
+For integration tests, set `TEST_MONGO_URL` and `TEST_REDIS_URL` to isolated MongoDB and Redis services, then run:
 
 ```sh
 uv run pytest tests/integration tests/e2e/test_workflow.py -q
 ```
 
-Tests allocate unique `workflow_test_*` databases, Redis streams and temporary SQLite files. Missing external services are explicit skips unless their test URLs are supplied; supplied but broken services fail. The Compose test is opt-in with `RUN_COMPOSE=1` and starts a randomly named disposable project. See the [runbook](docs/runbook.md) before running it alongside an existing deployment.
+Tests create unique `workflow_test_*` databases, Redis streams and temporary SQLite files. Service-dependent tests skip when their URLs are unset and fail if a supplied service is broken.
 
-## Evidence and completion gates
+The Compose test requires `RUN_COMPOSE=1` and starts a randomly named disposable project. Read the [runbook](docs/runbook.md) before running it alongside an existing deployment. GitHub Actions runs the Linux integration and Compose checks.
 
-- [Fault report](reports/faults.md): all 200 corrected fault cases matched their expected outcomes, including 20 expected review cases.
-- [Load report](reports/load.md): 300/300 fixture-planned workflows completed with 600 confirmed effects and zero errors at client concurrency 1, 5 and 20.
-- [Planner report](reports/planner.md): local Qwen2.5-7B-Instruct Q4_0 matched 80/80 held-out synthetic cases, with 100% schema validity, zero unauthorized proposals and 1.804 / 2.304-second p50 / p95 latency.
-- [Verification record](docs/verification.md): clean-clone installation, 87 locally passing tests, real MongoDB/Redis checks, Compose/restart verification and linked CI artifacts.
+## Measured results
 
-The real-model measurement gate is complete. The prompt, model and settings were frozen before one held-out pass; all four development passes are retained. These related synthetic templates establish bounded-corpus performance, not production accuracy. See [evaluation instructions](docs/evaluation.md) for model hashes and reproduction commands. Fixture reliability/load results remain separate from live-model quality.
+- [Fault tests](reports/faults.md) matched all 200 expected outcomes. That includes 20 cases expected to need review, not 200 automatic completions.
+- [Load tests](reports/load.md) completed 300 fixture-planned workflows with 600 confirmed effects and zero errors across client concurrency levels of 1, 5 and 20. These tests used simulators, not a live model.
+- [Planner evaluation](reports/planner.md) used local Qwen2.5-7B-Instruct Q4_0. It matched all 80 held-out synthetic cases with schema-valid responses and no unauthorized proposals. Client latency was 1.804 seconds at p50 and 2.304 seconds at p95.
 
-## Design
+The planner's prompt and settings were frozen before the held-out run. The cases use related synthetic templates and a small fixed catalog, with agent-authored and agent-reviewed labels. They do not establish production accuracy. The report retains all four development passes, including regressions.
 
-Python 3.12, FastAPI, Pydantic 2, asynchronous PyMongo, Redis Streams, HTTPX and SQLite. Dependencies and container images are pinned.
+The [verification record](docs/verification.md) links the CI runs and records clean-clone, service and restart checks. It also lists failed attempts and local service-dependent skips. Model hashes and reproduction commands are in the [evaluation instructions](docs/evaluation.md).
 
-- `domain.py` owns legal transitions and typed records.
-- `policy.py` checks tenant access and request intent independently of the model.
-- `store.py` implements conditional MongoDB writes and an in-memory contract fake.
-- `runner.py` owns orchestration, durable attempts, leases, retries and reconciliation.
-- `gateways.py` classifies external responses; uncertain responses never imply no effect.
-- `external_simulators/` provides transactional effect/idempotency ledgers.
+## Code and design
 
-Read [architecture](docs/architecture.md), [consistency guarantees](docs/consistency.md), [domain vocabulary](CONTEXT.md), and the [source specification](docs/2026-10-18-maintenance-workflow.md).
+The stack is Python 3.12, FastAPI, Pydantic 2, asynchronous PyMongo, Redis Streams, HTTPX and SQLite. Dependencies and container images are pinned. The main modules are under [`src/workflow_engine/`](src/workflow_engine/).
 
-This is a local maintenance-administration portfolio project. The integrations are simulators. It does not actuate equipment, certify repairs, or make safety decisions.
+- `domain.py` defines workflow records and legal state transitions.
+- `policy.py` checks tenant access and request intent without trusting the model.
+- `store.py` implements conditional MongoDB writes and an in-memory test implementation.
+- `runner.py` coordinates execution, leases, retries and uncertain outcomes.
+- `gateways.py` classifies responses from external services.
+- [`src/external_simulators/`](src/external_simulators/) contains the ticket and inventory services and their SQLite ledgers.
 
-## Sync local changes
-
-```sh
-git add <changed-files>
-git commit -m "Describe the change"
-git push
-```
-
-The `origin` remote is the private GitHub repository. To download later remote changes, use `git pull --ff-only` with a clean working tree.
+Read the [architecture](docs/architecture.md) for component responsibilities, [domain vocabulary](CONTEXT.md) for terminology, or the [original specification](docs/2026-10-18-maintenance-workflow.md) for scope and requirements.
