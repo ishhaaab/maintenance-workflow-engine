@@ -165,6 +165,10 @@ def main():
                 (output / "comparison.json").write_text(
                     json.dumps(report, indent=2), encoding="utf-8"
                 )
+        if args.profile_api == "true":
+            for name in ("api.prof", "requests.jsonl", "cpu.txt"):
+                if not (directory / "profile" / name).is_file():
+                    raise RuntimeError(f"Missing diagnostic artifact: {name}")
     print(json.dumps(report, indent=2))
 
 

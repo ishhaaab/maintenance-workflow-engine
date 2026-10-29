@@ -6,6 +6,7 @@ import json
 import os
 import pstats
 import time
+from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from pymongo import monitoring
 
 from workflow_engine import runtime
 from workflow_engine.store import MongoWorkflowStore
+from workflow_engine.telemetry import configure_logging
 
 current = ContextVar("request_timing", default=None)
 records = []
@@ -81,12 +83,8 @@ if __name__ == "__main__":
     MongoWorkflowStore.insert_or_get = time_store(MongoWorkflowStore.insert_or_get)
     MongoWorkflowStore.get = time_store(MongoWorkflowStore.get)
     profile = cProfile.Profile()
-    profile.enable()
-    try:
-        uvicorn.run(
-            RequestTimings(runtime.api_application()), host="0.0.0.0", port=8000, access_log=False
-        )
-    finally:
+
+    def save_profile():
         profile.disable()
         profile.dump_stats(str(output / "api.prof"))
         with (output / "requests.jsonl").open("w", encoding="utf-8") as stream:
@@ -94,3 +92,25 @@ if __name__ == "__main__":
                 stream.write(json.dumps(record) + "\n")
         with (output / "cpu.txt").open("w", encoding="utf-8") as stream:
             pstats.Stats(profile, stream=stream).sort_stats("tottime").print_stats(60)
+
+    configure_logging()
+    app = runtime.api_application()
+    lifespan = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def measured_lifespan(application):
+        async with lifespan(application):
+            try:
+                yield
+            finally:
+                # Uvicorn re-raises SIGTERM after shutdown; flush before that signal.
+                save_profile()
+
+    app.router.lifespan_context = measured_lifespan
+    profile.enable()
+    try:
+        uvicorn.run(
+            RequestTimings(app), host="0.0.0.0", port=8000, access_log=False, log_config=None
+        )
+    finally:
+        save_profile()
