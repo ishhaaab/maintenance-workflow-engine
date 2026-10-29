@@ -435,8 +435,8 @@ Each task uses failing tests, minimal implementation, green verification, and a 
 - [x] Write tests for schema-valid/invalid JSON, fenced prose, provider timeout, refusal, injected actions, a second exhausted model call, and fixture/model metadata separation. Add dataset tests for 40 dev/80 test unique IDs, no duplicate normalized request text across splits, and complete expected labels.
 - [x] Run `uv run pytest tests/unit/test_planner.py tests/unit/test_policy.py -q`; confirm the added real-adapter tests fail before implementation. Use a mocked HTTP provider for offline tests.
 - [x] Implement the OpenAI-compatible adapter with SDK retries disabled, requested schema where supported, strict post-validation everywhere, conservative clarification on invalid/unsupported outputs, and no mutation tools. Construct/document synthetic evaluation cases and review their labels before use.
-- [ ] With user-approved local GPU or provider budget, tune only on 40 dev cases, freeze prompt/model/settings, and run all 80 held-out cases once. Report schema validity, field correctness, unsafe proposals separately from policy-blocked effects, clarification behavior, latency, and actual token/call counts.
-- [ ] Commit evaluation code, frozen prompt, permitted synthetic cases, and measured report. If no live model was run, mark this gate incomplete; do not relabel the fixture planner as GenAI integration.
+- [x] With user-approved local GPU or provider budget, tune only on 40 dev cases, freeze prompt/model/settings, and run all 80 held-out cases once. Report schema validity, field correctness, unsafe proposals separately from policy-blocked effects, clarification behavior, latency, and actual token/call counts.
+- [x] Commit evaluation code, frozen prompt, permitted synthetic cases, and measured report. If no live model was run, mark this gate incomplete; do not relabel the fixture planner as GenAI integration.
 
 ### Task 12: Reproducible fault-injection benchmark
 

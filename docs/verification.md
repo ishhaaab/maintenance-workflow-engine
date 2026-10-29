@@ -30,8 +30,12 @@ The Linux commands were `uv sync --frozen --extra dev`, `uv run pytest tests/uni
 
 The final corrected matrix is tracked in the [fault report](../reports/faults.md). Downloaded per-case JSON records and JUnit counts were revalidated locally. All 300 downloaded load observations also reproduce the committed load summary exactly. Earlier unsuccessful runs remain linked rather than being replaced by later successful evidence.
 
-## Outstanding specification gate
+## Completed live-model gate
 
-No real-model inference has been run. The OpenAI-compatible adapter and offline failure tests are implemented, but measured held-out model quality still requires approved local-model resources or provider budget. Fixture accuracy does not satisfy that gate.
+After the user approved local inference and supplied Qwen2.5-7B-Instruct Q4_0, both model shards and the pinned CUDA runtime archives passed SHA256 verification. Four 40-case development passes refined the prompt. Commit `1016330` froze the final prompt, corpus, model and server settings before the single 80-case held-out pass.
 
-The original checklist retains unchecked historical pre-implementation service RED steps that could not run on this workstation. These are process-history limitations, not fabricated verification results. The build record distinguishes them from the outstanding live-model measurement.
+The held-out pass made 80 genuine inference calls and matched all 80 expected outcomes with schema-valid responses, zero unauthorized proposals, zero provider errors and zero truncations. Latency p50/p95 was 1.804/2.304 seconds on an RTX 3060 Laptop GPU. Every raw response was separately reparsed and checked against its request, tenant catalog, expected label and policy; all frozen input hashes matched after the run. See the [planner report](../reports/planner.md) for full token counts, development regressions, reproduction commands and synthetic-corpus limitations.
+
+The complete local suite passed after the final prompt change: 87 passed, 26 service-dependent skips. The evaluation server was stopped afterward. The original fixture smoke test above remains fixture evidence only.
+
+The original checklist retains unchecked historical pre-implementation service RED steps that could not run on this workstation. These are process-history limitations, not outstanding implementation or measurement gates.

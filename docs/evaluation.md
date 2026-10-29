@@ -22,6 +22,28 @@ uv run python scripts/evaluate_planner.py --real --approve-inference --output ar
 
 Each case makes one provider request with retries disabled. The runtime runner separately enforces at most two accounted calls per workflow. Reports include schema-valid rate, exact required-field accuracy, unauthorized/unrequested proposal rate, clarification precision/recall, latency and returned token usage. An unsafe proposal blocked by policy is not a correct planner prediction. Invalid output converted to clarification is not counted as a schema-valid success.
 
+### Reproduce the local Qwen run
+
+The measured run is recorded in [the planner report](../reports/planner.md). Model/runtime downloads and SHA256 hashes are pinned in [the frozen protocol](../reports/planner-qwen-q4_0-freeze.json). Download both Q4_0 shards to `model/`, keep their original names, and extract both Windows CUDA 12.4 runtime archives into one directory. See the model's [Apache-2.0 license](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/blob/bb5d59e06d9551d752d08b292a50eb208b07ab1f/LICENSE) and llama.cpp's [MIT license](https://github.com/ggml-org/llama.cpp/blob/b11960/LICENSE). Model weights and runtime binaries are not committed to this repository.
+
+Start the pinned server from PowerShell, replacing the executable path with your extracted runtime location:
+
+```powershell
+& 'C:\path\to\llama-server.exe' --model model/qwen2.5-7b-instruct-q4_0-00001-of-00002.gguf --alias Qwen/Qwen2.5-7B-Instruct --host 127.0.0.1 --port 18080 --ctx-size 4096 --parallel 1 --gpu-layers all --fit off --flash-attn on --batch-size 512 --ubatch-size 128 --threads 6 --seed 42 --temp 0 --top-k 0 --top-p 1 --min-p 0 --repeat-penalty 1 --cache-ram 0 --no-cache-prompt --no-webui --no-agent --cors-origins localhost --offline
+```
+
+Once `http://127.0.0.1:18080/health` returns 200, configure another PowerShell terminal:
+
+```powershell
+$env:WORKFLOW_MODEL_URL = 'http://127.0.0.1:18080/v1'
+$env:WORKFLOW_MODEL_NAME = 'Qwen/Qwen2.5-7B-Instruct'
+$env:WORKFLOW_MODEL_REVISION = 'Qwen/Qwen2.5-7B-Instruct-GGUF@bb5d59e06d9551d752d08b292a50eb208b07ab1f:Q4_0'
+uv run python scripts/evaluate_planner.py --real --approve-inference --cases fixtures/planner_dev.jsonl --output artifacts/planner-dev-reproduction-1.json
+uv run python scripts/evaluate_planner.py --real --approve-inference --output artifacts/planner-held-out-reproduction-1.json
+```
+
+Stop the server with Ctrl+C afterward. A new run needs a new output filename. These reproduction commands use the same adapter and evaluation function as the recorded run; the recorded run additionally journaled raw synthetic responses for inspection. The original held-out results are now known, so subsequent runs are reproductions, not a new unseen evaluation. Any further tuning should use development data and a newly frozen unseen set for a new quality claim.
+
 ## Fault matrix
 
 With isolated MongoDB and Redis available:
