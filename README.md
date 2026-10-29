@@ -90,9 +90,10 @@ Tests allocate unique `workflow_test_*` databases, Redis streams and temporary S
 
 ## Evidence and completion gates
 
-- [Fault report](reports/faults.md): 20 named scenarios × seeds 0–9, with expected review cases reported separately.
-- [Load report](reports/load.md): 100 fixture-planned workflows at concurrency 1, 5 and 20, with admission, processing, queue and approval timing separated.
+- [Fault report](reports/faults.md): all 200 corrected fault cases matched their expected outcomes, including 20 expected review cases.
+- [Load report](reports/load.md): 300/300 fixture-planned workflows completed with 600 confirmed effects and zero errors at client concurrency 1, 5 and 20.
 - [Planner report](reports/planner.md): 40 development and 80 held-out synthetic cases. **A real-model evaluation has not been run.** Fixture predictions are not evidence of model quality.
+- [Verification record](docs/verification.md): clean-clone installation, 87 locally passing tests, real MongoDB/Redis checks, Compose/restart verification and linked CI artifacts.
 
 The repository includes an OpenAI-compatible adapter. Before a live evaluation, approve a local GPU or provider budget, record the exact model revision, review the synthetic labels, then follow [evaluation instructions](docs/evaluation.md). The full project's real-model completion gate remains open until that measured run exists.
 

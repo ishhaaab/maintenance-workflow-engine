@@ -399,7 +399,7 @@ Each task uses failing tests, minimal implementation, green verification, and a 
 - [x] Write tests for 202 new/200 replay/409 changed admission, missing idempotency key 400, invalid key 401, foreign workflow 404, 16-KiB rejection, extra tenant field rejection, stale/hash-mismatched approval, replayed approval, cancellation races, and cancelled workflows retaining confirmed effects.
 - [x] Run `uv run pytest tests/integration/test_api.py -q`; confirm red.
 - [x] Implement tenant identity from API-key settings, body limits, domain-exception mapping, durable admission, exact approval, safe cancellation, status projection, and distinct liveness/readiness. Mongo-down admission is 503; Redis-down durable admission still succeeds with degraded broker status.
-- [ ] Run API tests with HTTPX ASGI transport and real-store race cases. Prove no handler performs an LLM or external mutation call while handling admission/approval/cancellation.
+- [x] Run API tests with HTTPX ASGI transport and real-store race cases. Prove no handler performs an LLM or external mutation call while handling admission/approval/cancellation.
 - [x] Commit HTTP routes and request examples. Public responses/logs must not expose another tenant, provider secret, raw credentials, or mutable internal storage objects.
 
 ### Task 9: Bounded retry, reconciliation, and stale-worker recovery
@@ -460,9 +460,9 @@ Required cases: duplicate admission; changed-payload replay; duplicate Redis mes
 
 - [x] Write tests proving API keys, provider keys, Mongo credentials, raw request text, and raw provider output are absent from logs. Write a load-report test separating admission time, approval wait, queue delay, processing duration, errors, and expected-review outcomes.
 - [x] Run tests red, then implement redaction, structured event naming, CLI metrics/report output, and CI groups. Default CI is offline unit tests; real Mongo/Redis/HTTP integration and compose jobs are explicit separate jobs with visible skips/failures.
-- [ ] Run `uv sync --frozen --extra dev`, `uv run pytest tests/unit -q`, integration tests with isolated Mongo/Redis/simulators, and the compose end-to-end suite. Record exact commands, counts, and environment.
+- [x] Run `uv sync --frozen --extra dev`, `uv run pytest tests/unit -q`, integration tests with isolated Mongo/Redis/simulators, and the compose end-to-end suite. Record exact commands, counts, and environment.
 - [x] Execute 100 workflows each at concurrency 1, 5, and 20 with the fixture planner and explicit approvals. Report observed p50/p95 and correctness, not an invented SLO. Repeat live-model latency separately if budget permits; never mix fixture and live numbers.
-- [ ] Commit all evidence and a two-minute reproducible demo script. Final review checks real-model status, tenant isolation, exact approval, effect counts, crash/Redis recovery, bounded uncertainty handling, secrets, license notices, and reproducible setup. Write resume claims only from completed measurements.
+- [x] Commit all evidence and a two-minute reproducible demo script. Final review checks real-model status, tenant isolation, exact approval, effect counts, crash/Redis recovery, bounded uncertainty handling, secrets, license notices, and reproducible setup. Write resume claims only from completed measurements.
 
 ## Suggested milestone demos
 
