@@ -79,7 +79,7 @@ All four development reports and prompt snapshots are retained alongside the hel
 
 Target: reduce measured p95 admission latency at 20 concurrent clients toward 38 ms from the recorded 108.126 ms. Preserve admission durability, idempotency, exact approval and the existing 50 ms status-polling workload.
 
-- [ ] Profile request scheduling, serialization and durable-store time under concurrent admission/polling.
+- [x] Profile request scheduling, serialization and durable-store time under concurrent admission/polling.
 - [ ] Reproduce identified bottlenecks, apply focused fixes and verify API contracts.
 - [ ] Compare baseline and optimized full-workflow measurements on the same CI runner; publish every run.
 
@@ -94,3 +94,7 @@ Comparison attempt 40902912125 failed before any measurement: `actions/checkout`
 Controlled run 40946519276 completed all 600 workflows, with 1,200 confirmed effects and zero errors. Baseline pooled admission p95 was 95.141 ms; async-auth candidate p95 was 97.588 ms. The queue change fixes thread-pool saturation availability, but does not establish a real-service latency improvement. Preserve the complete comparison. Next diagnosis records API wall time, MongoDB command time, store-call time and CPU profiles in a separate instrumented candidate run; instrumented results are not latency claims.
 
 Diagnostic run 40948373951 completed its 100 workflows, but Uvicorn re-raised SIGTERM before the profiler's outer `finally` could persist the traces. Move the flush into ASGI lifespan shutdown and make missing profiler artifacts fail the diagnostic job. Its instrumented client latencies are retained but are not used as performance evidence.
+
+Diagnostic run 40949174274 saved all traces. Across 16,853 status reads, FastAPI's recursive `jsonable_encoder` consumed 10.629 seconds cumulatively. The status handler had already converted its model to a JSON-compatible dictionary, unlike admission/approval it returned that dictionary directly, causing FastAPI to walk it again. Return `JSONResponse` as the other command routes do. The diagnostic also recorded admission store p95 66.284 ms and MongoDB command p95 47.983 ms; these include scheduling and profiler overhead, not isolated server execution time.
+
+The user approved isolating continued latency work after two evaluation commits appeared on main. Branch `perf/admission-latency` starts at 7070d2e with the original fixtures. Its clean baseline passed 88 tests with 26 explicit service-dependent skips.

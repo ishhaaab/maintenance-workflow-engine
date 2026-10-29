@@ -92,7 +92,7 @@ def create_app(settings, store, catalog, broker=None):
 
     @app.get("/workflows/{workflow_id}")
     async def get(workflow_id: str, tenant_id: str = Depends(tenant)):
-        return _public(await store.get(workflow_id, tenant_id))
+        return JSONResponse(_public(await store.get(workflow_id, tenant_id)))
 
     @app.post("/workflows/{workflow_id}/approve")
     async def approve(workflow_id: str, request: ApprovalRequest, tenant_id: str = Depends(tenant)):
