@@ -104,12 +104,12 @@ async def test_model_timeout_no_hidden_retries():
 def test_dataset_splits_are_complete_and_unique():
     dev = [json.loads(line) for line in Path("fixtures/planner_dev.jsonl").read_text().splitlines()]
     test = [
-        json.loads(line) for line in Path("fixtures/planner_test.jsonl").read_text().splitlines()
+        json.loads(line) for line in Path("fixtures/planner_test_v2.jsonl").read_text().splitlines()
     ]
     assert len(dev) == 40
-    assert len(test) == 80
-    assert len({case["id"] for case in dev + test}) == 120
-    assert len({" ".join(case["text"].lower().split()) for case in dev + test}) == 120
+    assert len(test) == 98
+    assert len({case["id"] for case in dev + test}) == 138
+    assert len({" ".join(case["text"].lower().split()) for case in dev + test}) == 138
     for case in dev + test:
         parse_proposal(json.dumps(case["expected"]))
 

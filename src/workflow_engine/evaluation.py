@@ -114,7 +114,7 @@ async def evaluate_planner(cases_path, planner, catalog):
         "inference_responses": sum(r["inference_response"] for r in results),
         "real_model_gate": (
             planner.metadata["adapter"] == "model"
-            and count == 80
+            and count == 98
             and all(r["inference_response"] and r["error"] is None for r in results)
             and planner.metadata.get("model_revision")
             not in {None, "unrecorded", "record-before-evaluation"}

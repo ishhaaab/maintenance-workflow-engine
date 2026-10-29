@@ -16,3 +16,4 @@ model/
 artifacts/
 dist/
 *.egg-info/
+scratch/

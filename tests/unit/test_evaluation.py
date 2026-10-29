@@ -66,11 +66,11 @@ def test_load_report_keeps_latency_and_outcome_denominators_separate():
 
 async def test_fixture_evaluation_cannot_be_mislabeled_real_model():
     report = await evaluate_planner(
-        "fixtures/planner_test.jsonl",
-        FixturePlanner.from_file("fixtures/planner_test.jsonl"),
+        "fixtures/planner_test_v2.jsonl",
+        FixturePlanner.from_file("fixtures/planner_test_v2.jsonl"),
         CatalogProvider.from_file("fixtures/catalog.jsonl"),
     )
-    assert report["cases"] == 80
+    assert report["cases"] == 98
     assert report["adapter"] == "fixture"
     assert report["real_model_gate"] is False
 
@@ -82,11 +82,11 @@ async def test_provider_outage_cannot_complete_real_model_gate():
     ) as client:
         planner = ModelPlanner(client, Settings(model_revision="recorded-test-revision"))
         report = await evaluate_planner(
-            "fixtures/planner_test.jsonl",
+            "fixtures/planner_test_v2.jsonl",
             planner,
             CatalogProvider.from_file("fixtures/catalog.jsonl"),
         )
-    assert len(report["results"]) == 80
+    assert len(report["results"]) == 98
     assert all(result["error"] == "provider_unavailable" for result in report["results"])
     assert report["real_model_gate"] is False
     assert report["inference_responses"] == 0
@@ -100,10 +100,10 @@ async def test_completed_model_evaluation_does_not_require_perfect_predictions()
     ) as client:
         planner = ModelPlanner(client, Settings(model_revision="recorded-test-revision"))
         report = await evaluate_planner(
-            "fixtures/planner_test.jsonl",
+            "fixtures/planner_test_v2.jsonl",
             planner,
             CatalogProvider.from_file("fixtures/catalog.jsonl"),
         )
     assert report["schema_valid_rate"] == 0
-    assert report["inference_responses"] == 80
+    assert report["inference_responses"] == 98
     assert report["real_model_gate"] is True

@@ -4,9 +4,11 @@ Keep model quality, execution reliability and fixture throughput separate. All r
 
 ## Planner
 
-`fixtures/planner_dev.jsonl` has 40 synthetic development examples. `fixtures/planner_test.jsonl` has 80 held-out examples. Both are generated from explicit templates, with no duplicated normalized request text or ID across splits. They contain related templates, so they are not independent evidence of broad natural-language generalization.
+`fixtures/planner_dev.jsonl` has 40 synthetic development examples. The frozen v2 held-out set, `fixtures/planner_test_v2.jsonl`, has 98 examples, 48 plan and 50 clarification cases, with no duplicated normalized request text or ID across splits. These agent-authored sets contain related templates, including informal synthetic phrasings in v2, so they are not independent evidence of broad natural-language generalization.
 
-Labels were authored and reviewed by the implementing agent against explicit catalog/grammar templates. They have not been human-reviewed; this provenance is recorded in every example. Freeze the corpus, prompt, model revision and decoding settings before a held-out real-model run. Do not tune on the held-out results.
+`fixtures/planner_test.jsonl`, the retired 80-case v1 set, remains a historical record. Its 2026-10-29 result was 100% on templated cases and must not be tuned against. The dev set was revised after the recorded development and held-out runs; the pre-revision dev file is recoverable at commit `1016330`, and dev-pass reproduction therefore requires that commit's input.
+
+Labels, including v2 labels, were authored and policy-verified by the implementing agent against the explicit catalog/grammar. They have not been human-reviewed; this provenance is recorded in every example. The v2 corpus, prompt, model revision and decoding settings are pinned in [the v2 frozen protocol](../reports/planner-qwen-q4_0-freeze-v2.json) before inference. Run one held-out pass without tuning on v2 responses. Never edit the frozen v2 corpus; further tuning uses dev data and requires a new `planner_test_v3.jsonl` and freeze file.
 
 The fixture smoke test is useful for checking report machinery only:
 
@@ -17,7 +19,7 @@ uv run python scripts/evaluate_planner.py --output artifacts/fixture-smoke.json
 After approval of a local GPU or provider budget, configure `WORKFLOW_MODEL_URL`, `WORKFLOW_MODEL_NAME`, `WORKFLOW_MODEL_REVISION`, and optionally `WORKFLOW_MODEL_KEY`. Then run:
 
 ```sh
-uv run python scripts/evaluate_planner.py --real --approve-inference --output artifacts/planner-held-out-run-1.json
+uv run python scripts/evaluate_planner.py --real --approve-inference --cases fixtures/planner_test_v2.jsonl --output artifacts/planner-held-out-v2-run-1.json
 ```
 
 Each case makes one provider request with retries disabled. The runtime runner separately enforces at most two accounted calls per workflow. Reports include schema-valid rate, exact required-field accuracy, unauthorized/unrequested proposal rate, clarification precision/recall, latency and returned token usage. An unsafe proposal blocked by policy is not a correct planner prediction. Invalid output converted to clarification is not counted as a schema-valid success.
@@ -39,10 +41,10 @@ $env:WORKFLOW_MODEL_URL = 'http://127.0.0.1:18080/v1'
 $env:WORKFLOW_MODEL_NAME = 'Qwen/Qwen2.5-7B-Instruct'
 $env:WORKFLOW_MODEL_REVISION = 'Qwen/Qwen2.5-7B-Instruct-GGUF@bb5d59e06d9551d752d08b292a50eb208b07ab1f:Q4_0'
 uv run python scripts/evaluate_planner.py --real --approve-inference --cases fixtures/planner_dev.jsonl --output artifacts/planner-dev-reproduction-1.json
-uv run python scripts/evaluate_planner.py --real --approve-inference --output artifacts/planner-held-out-reproduction-1.json
+uv run python scripts/evaluate_planner.py --real --approve-inference --cases fixtures/planner_test_v2.jsonl --output artifacts/planner-held-out-v2-run-1.json
 ```
 
-Stop the server with Ctrl+C afterward. A new run needs a new output filename. These reproduction commands use the same adapter and evaluation function as the recorded run; the recorded run additionally journaled raw synthetic responses for inspection. The original held-out results are now known, so subsequent runs are reproductions, not a new unseen evaluation. Any further tuning should use development data and a newly frozen unseen set for a new quality claim.
+Stop the server with Ctrl+C afterward. A new run needs a new output filename. The commands use the same adapter and evaluation function as the recorded run; the recorded run additionally journaled raw synthetic responses for inspection. The dev command uses the revised dev set, not the recorded run's input. The held-out command is the single new frozen v2 pass, not a reproduction of v1. The original v1 held-out results are known, so subsequent v1 runs are reproductions, not a new unseen evaluation. Any further tuning should use development data and a newly frozen unseen set for a new quality claim.
 
 ## Fault matrix
 
