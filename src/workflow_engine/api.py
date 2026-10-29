@@ -53,7 +53,7 @@ def create_app(settings, store, catalog, broker=None):
     app = FastAPI(title="Maintenance workflow engine", version="0.1.0")
     app.add_middleware(BodyLimit)
 
-    def tenant(x_api_key: str | None = Header(default=None)):
+    async def tenant(x_api_key: str | None = Header(default=None)):
         if x_api_key:
             for key, tenant_id in settings.api_keys.items():
                 if secrets.compare_digest(key.encode(), x_api_key.encode()):

@@ -127,7 +127,7 @@ async def run(args):
             transport=httpx.AsyncHTTPTransport(retries=0),
             trust_env=False,
         ) as client:
-            for concurrency in [1, 5, 20]:
+            for concurrency in args.concurrency:
                 semaphore = asyncio.Semaphore(concurrency)
                 records = []
                 for completed in asyncio.as_completed(
@@ -165,6 +165,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://127.0.0.1:8000")
     parser.add_argument("--count", type=int, default=100)
+    parser.add_argument(
+        "--concurrency", type=int, nargs="+", choices=range(1, 101), default=[1, 5, 20]
+    )
     parser.add_argument("--timeout", type=float, default=120)
     parser.add_argument("--output", required=True)
     parser.add_argument("--approve-plans", action="store_true")

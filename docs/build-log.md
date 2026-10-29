@@ -74,3 +74,17 @@ Development run 4 matched all 40 labels, with schema-valid rate 1.0, zero unauth
 The single held-out pass at frozen code 1016330 completed all 80 responses: 48 exact plans, 32 valid clarifications, zero unauthorized proposals, zero provider errors and zero truncations. Schema accuracy, required-field accuracy and clarification precision/recall were all 1.0. Latency p50/p95 was 1.804/2.304 seconds; usage was 81,544 prompt tokens plus 5,750 completion tokens. Raw responses were independently reparsed and checked against requests, tenants, labels and policy. All frozen input hashes still matched afterward. An initial evidence-check assertion compared the provider's extra cached-token detail object with the adapter's documented three-counter projection; comparing the projected counters and separately asserting zero cached tokens verified the records without rerunning inference.
 
 All four development reports and prompt snapshots are retained alongside the held-out per-case report. The complete local evaluation made 240 calls and used 247,571 returned tokens. Server PID 23620 was stopped after verification and GPU memory was released. User-supplied model files remain in the ignored `model/` folder. The original incomplete Q4_K_M download was not restarted.
+
+## Admission latency optimization
+
+Target: reduce measured p95 admission latency at 20 concurrent clients toward 38 ms from the recorded 108.126 ms. Preserve admission durability, idempotency, exact approval and the existing 50 ms status-polling workload.
+
+- [ ] Profile request scheduling, serialization and durable-store time under concurrent admission/polling.
+- [ ] Reproduce identified bottlenecks, apply focused fixes and verify API contracts.
+- [ ] Compare baseline and optimized full-workflow measurements on the same CI runner; publish every run.
+
+Initial inspection found a synchronous, CPU-only authentication dependency on every route, which FastAPI schedules through a shared thread pool, and dictionary responses on the frequently polled status route, which FastAPI recursively encodes again. These are hypotheses until measured. Docker is unavailable locally, so local ASGI/memory diagnostics isolate application overhead; real MongoDB/Redis/Compose measurements run in GitHub Actions.
+
+The instrumented local baseline made 1,520 dependency thread-pool calls during 1,000 admissions plus concurrent polling; thread-pool wait p95 was 74.152 ms. The targeted regression blocked the worker pool and observed admission timing out. Making the CPU-only authentication dependency async removed the queue hop, and the same regression now passes. Existing API contracts passed as well. The in-memory diagnostic does not suspend on database I/O, so its optimized throughput/poll counts are not used as a service latency claim.
+
+The controlled CI comparison builds baseline ec611a7 and the candidate before timing, on one runner. Each isolated stack gets one recorded bootstrap workflow, followed by three complete 100-workflow groups at concurrency 20. The existing full-workflow load driver, 50 ms polling, approval and simulator effects are retained; only a concurrency selector was added. All trial observations and failed attempts are preserved. MongoDB write concern, scheduling intervals and approval policy are unchanged.

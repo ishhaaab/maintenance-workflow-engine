@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import AsyncExitStack
 
+import anyio.to_thread
 import httpx
 import pytest
 from pymongo.errors import ServerSelectionTimeoutError
@@ -9,6 +10,7 @@ from tests.support import REQUEST, harness
 from workflow_engine.api import create_app
 from workflow_engine.policy import CatalogProvider
 from workflow_engine.settings import Settings
+from workflow_engine.store import MemoryWorkflowStore
 
 
 def app_for(h):
@@ -17,6 +19,39 @@ def app_for(h):
         h.store,
         CatalogProvider.from_file("fixtures/catalog.jsonl"),
     )
+
+
+async def test_admission_remains_available_when_worker_thread_pool_is_saturated():
+    store = MemoryWorkflowStore()
+    app = create_app(
+        Settings(api_keys={"a-key": "tenant-a"}),
+        store,
+        CatalogProvider.from_file("fixtures/catalog.jsonl"),
+    )
+    limiter = anyio.to_thread.current_default_thread_limiter()
+    capacity = limiter.total_tokens
+    busy_worker = object()
+    try:
+        limiter.total_tokens = 1
+        limiter.acquire_on_behalf_of_nowait(busy_worker)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://api"
+        ) as client:
+            response = await asyncio.wait_for(
+                client.post(
+                    "/workflows",
+                    headers={"X-API-Key": "a-key", "Idempotency-Key": "busy-pool"},
+                    json={"text": REQUEST},
+                ),
+                timeout=1,
+            )
+    finally:
+        limiter.release_on_behalf_of(busy_worker)
+        limiter.total_tokens = capacity
+    assert response.status_code == 202
+    persisted = await store.get(response.json()["workflow_id"], "tenant-a")
+    assert persisted.request_text == REQUEST
+    assert persisted.state == "PENDING_PLAN"
 
 
 async def test_admission_isolation_replay_and_body_limits(tmp_path, clock):

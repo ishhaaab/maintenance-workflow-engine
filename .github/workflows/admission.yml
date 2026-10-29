@@ -1,0 +1,46 @@
+name: Admission latency comparison
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Baseline revision
+        required: true
+        default: ec611a7
+      candidate_ref:
+        description: Optimized revision
+        required: true
+        default: main
+      repetitions:
+        description: Groups of 100 workflows per revision
+        required: true
+        default: '3'
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.baseline_ref }}
+          path: baseline
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_ref }}
+          path: candidate
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install uv==0.13.6
+      - run: uv sync --frozen --extra dev
+        working-directory: candidate
+      - name: Compare full-workflow admission latency
+        working-directory: candidate
+        env:
+          REPETITIONS: ${{ inputs.repetitions }}
+        run: uv run python scripts/benchmark_admission.py --baseline ../baseline --candidate . --repetitions "$REPETITIONS" --output-dir artifacts/admission
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: admission-evidence
+          path: candidate/artifacts/admission
