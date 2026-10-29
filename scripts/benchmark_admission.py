@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--repetitions", type=int, choices=range(1, 6), default=3)
+    parser.add_argument("--profile-api", choices=["true", "false"], default="false")
     args = parser.parse_args()
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -41,6 +42,12 @@ def main():
         "variants": [],
     }
     variants = [("baseline", args.baseline.resolve()), ("candidate", args.candidate.resolve())]
+    if args.profile_api == "true":
+        variants = [variants[1]]
+        report["diagnostic_only"] = True
+        report["protocol"] = (
+            "Instrumented candidate diagnosis; cProfile overhead means these timings are not an uninstrumented performance result."
+        )
     # Build both before measurement so build load never overlaps either experiment.
     images = {}
     for label, root in variants:
@@ -50,15 +57,25 @@ def main():
         directory = output / label
         directory.mkdir()
         override = directory / "compose.override.json"
+        services = {
+            role: {"image": images[label]}
+            for role in ("api", "worker", "dispatcher", "ticketing", "inventory")
+        }
+        if args.profile_api == "true":
+            profile_output = directory / "profile"
+            profile_output.mkdir(mode=0o777)
+            profile_output.chmod(0o777)
+            services["api"].update(
+                entrypoint=["python", "/profile-api.py"],
+                command=[],
+                environment={"PROFILE_OUTPUT_DIR": "/profile-output"},
+                volumes=[
+                    f"{driver.with_name('profile_api.py')}:/profile-api.py:ro",
+                    f"{profile_output}:/profile-output",
+                ],
+            )
         override.write_text(
-            json.dumps(
-                {
-                    "services": {
-                        role: {"image": images[label]}
-                        for role in ("api", "worker", "dispatcher", "ticketing", "inventory")
-                    }
-                }
-            ),
+            json.dumps({"services": services}),
             encoding="utf-8",
         )
         compose = [

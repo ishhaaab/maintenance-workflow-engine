@@ -14,6 +14,10 @@ on:
         description: Groups of 100 workflows per revision
         required: true
         default: '3'
+      profile_api:
+        description: Instrument the candidate only for diagnosis
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -38,7 +42,8 @@ jobs:
         working-directory: candidate
         env:
           REPETITIONS: ${{ inputs.repetitions }}
-        run: uv run python scripts/benchmark_admission.py --baseline ../baseline --candidate . --repetitions "$REPETITIONS" --output-dir artifacts/admission
+          PROFILE_API: ${{ inputs.profile_api }}
+        run: uv run python scripts/benchmark_admission.py --baseline ../baseline --candidate . --repetitions "$REPETITIONS" --profile-api "$PROFILE_API" --output-dir artifacts/admission
       - uses: actions/upload-artifact@v4
         if: always()
         with:
