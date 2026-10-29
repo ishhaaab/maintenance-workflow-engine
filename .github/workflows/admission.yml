@@ -5,7 +5,7 @@ on:
       baseline_ref:
         description: Baseline revision
         required: true
-        default: ec611a7
+        default: ec611a716bf6684117d976e0f78449cc7d8b9372
       candidate_ref:
         description: Optimized revision
         required: true
