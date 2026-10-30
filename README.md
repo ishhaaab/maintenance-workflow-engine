@@ -112,9 +112,12 @@ The Compose test requires `RUN_COMPOSE=1` and starts a randomly named disposable
 
 - [Fault tests](reports/faults.md) matched all 200 expected outcomes. That includes 20 cases expected to need review, not 200 automatic completions.
 - [Load tests](reports/load.md) completed 300 fixture-planned workflows with 600 confirmed effects and zero errors across client concurrency levels of 1, 5 and 20. These tests used simulators, not a live model.
-- [Planner evaluation](reports/planner.md) used local Qwen2.5-7B-Instruct Q4_0. It matched all 80 held-out synthetic cases with schema-valid responses and no unauthorized proposals. Client latency was 1.804 seconds at p50 and 2.304 seconds at p95.
+- [Admission latency](reports/admission.md) measured pooled p95 values of 59.431 and 69.536 ms at 20 concurrent clients on separate four-CPU runners. Each run completed 300 workflows with 600 confirmed effects and zero errors. The report retains every trial, including a slower experiment that was removed.
+- [Planner evaluation](reports/planner.md) used local Qwen2.5-7B-Instruct Q4_0. It matched all 80 held-out synthetic cases in the original v1 set with schema-valid responses and no unauthorized proposals. Planner request latency was 1.804 seconds at p50 and 2.304 seconds at p95.
 
 The planner's prompt and settings were frozen before the held-out run. The cases use related synthetic templates and a small fixed catalog, with agent-authored and agent-reviewed labels. They do not establish production accuracy. The report retains all four development passes, including regressions.
+
+A new 98-case v2 set is [frozen for a separate evaluation](reports/planner-qwen-q4_0-freeze-v2.json). No live-model result for that set has been recorded yet. The 80-case result above applies only to v1.
 
 The [verification record](docs/verification.md) links the CI runs and records clean-clone, service and restart checks. It also lists failed attempts and local service-dependent skips. Model hashes and reproduction commands are in the [evaluation instructions](docs/evaluation.md).
 

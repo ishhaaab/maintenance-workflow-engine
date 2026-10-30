@@ -1,5 +1,7 @@
 # Load benchmark status
 
+Later admission optimization measurements are in [admission.md](admission.md). The retained implementation recorded 59.431 and 69.536 ms pooled p95 at concurrency 20 on separate four-CPU runners. The original two-CPU measurement below is preserved.
+
 **300/300 workflows completed with zero errors**, producing 600 confirmed action results. The completed measurement is GitHub Actions run [40700067125](https://github.com/ishhaaab/maintenance-workflow-engine/actions/runs/40700067125), commit `38c1078`, using the fixture planner and explicit programmatic approval.
 
 | Client concurrency | Workflows completed | Admission p50 / p95, ms | Active duration p50 / p95, s | Queue delay p50 / p95, ms | Approval wait p50 / p95, ms |

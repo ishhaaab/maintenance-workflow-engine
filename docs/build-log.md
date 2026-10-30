@@ -79,9 +79,9 @@ All four development reports and prompt snapshots are retained alongside the hel
 
 Target: reduce measured p95 admission latency at 20 concurrent clients toward 38 ms from the recorded 108.126 ms. Preserve admission durability, idempotency, exact approval and the existing 50 ms status-polling workload.
 
-- [ ] Profile request scheduling, serialization and durable-store time under concurrent admission/polling.
-- [ ] Reproduce identified bottlenecks, apply focused fixes and verify API contracts.
-- [ ] Compare baseline and optimized full-workflow measurements on the same CI runner; publish every run.
+- [x] Profile request scheduling, serialization and durable-store time under concurrent admission/polling.
+- [x] Reproduce identified bottlenecks, apply focused fixes and verify API contracts.
+- [x] Compare baseline and optimized full-workflow measurements on the same CI runner; publish every run.
 
 Initial inspection found a synchronous, CPU-only authentication dependency on every route, which FastAPI schedules through a shared thread pool, and dictionary responses on the frequently polled status route, which FastAPI recursively encodes again. These are hypotheses until measured. Docker is unavailable locally, so local ASGI/memory diagnostics isolate application overhead; real MongoDB/Redis/Compose measurements run in GitHub Actions.
 
@@ -94,3 +94,15 @@ Comparison attempt 40902912125 failed before any measurement: `actions/checkout`
 Controlled run 40946519276 completed all 600 workflows, with 1,200 confirmed effects and zero errors. Baseline pooled admission p95 was 95.141 ms; async-auth candidate p95 was 97.588 ms. The queue change fixes thread-pool saturation availability, but does not establish a real-service latency improvement. Preserve the complete comparison. Next diagnosis records API wall time, MongoDB command time, store-call time and CPU profiles in a separate instrumented candidate run; instrumented results are not latency claims.
 
 Diagnostic run 40948373951 completed its 100 workflows, but Uvicorn re-raised SIGTERM before the profiler's outer `finally` could persist the traces. Move the flush into ASGI lifespan shutdown and make missing profiler artifacts fail the diagnostic job. Its instrumented client latencies are retained but are not used as performance evidence.
+
+Diagnostic run 40949174274 saved all traces. Across 16,853 status reads, FastAPI's recursive `jsonable_encoder` consumed 10.629 seconds cumulatively. The status handler had already converted its model to a JSON-compatible dictionary, unlike admission/approval it returned that dictionary directly, causing FastAPI to walk it again. Return `JSONResponse` as the other command routes do. The diagnostic also recorded admission store p95 66.284 ms and MongoDB command p95 47.983 ms; these include scheduling and profiler overhead, not isolated server execution time.
+
+The user approved isolating continued latency work after two evaluation commits appeared on main. Branch `perf/admission-latency` starts at 7070d2e with the original fixtures. Its clean baseline passed 88 tests with 26 explicit service-dependent skips.
+
+Serialization comparison 40956142351 completed 600/600 workflows with 1,200 confirmed effects and zero errors. Baseline pooled p95 was 65.012 ms, candidate 59.431 ms. All three candidate trials were 65.736, 51.536 and 61.026 ms. Later admissions still reached 44.500–68.011 ms p95, so database connection warm-up alone cannot close the remaining gap. The runner reported four CPUs, unlike the original two-CPU measurement; use the paired baseline for the measured reduction.
+
+The next hypothesis targets the network stack. The API profile spent 4.585 seconds cumulatively in the pure-Python HTTP event handler and 5.010 seconds in its send path. Pin Uvicorn's supported native HTTP parser `httptools` and POSIX event loop `uvloop`. Uvicorn auto-selects these installed backends; Windows retains its supported asyncio loop. The benchmark's HTTPX client continues using its original asyncio/h11 path.
+
+Native-networking experiment 40957512974 completed 600/600 workflows and 1,200 confirmed effects with zero errors, but its candidate pooled p95 regressed to 101.062 ms versus 69.536 ms for the retained serialization build. Remove both experimental dependencies and regenerate the original lockfile. The retained code therefore has two measured pooled p95 observations, 59.431 and 69.536 ms on different runners; this variability is part of the result, not a reason to discard the slower observation. All three comparisons and their raw observations are published in `reports/admission-results.json`.
+
+The user accepted the observed improvement and did not require further pursuit of 38 ms. Stop tuning here. The independent read-only review of ec611a7..b3b48e9 found no defects and verified six baseline/candidate response-equivalence cases. It correctly limits inference from baseline-first ordering and shared-stack trials; no repeatable SLO or controlled reduction from the historical two-CPU 108.126 ms result is claimed. The retained product code and dependencies match b3b48e9 exactly; continued work is isolated on `perf/admission-latency`.
