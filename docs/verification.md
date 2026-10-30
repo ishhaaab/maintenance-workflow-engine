@@ -39,3 +39,13 @@ The held-out pass made 80 genuine inference calls and matched all 80 expected ou
 The complete local suite passed after the final prompt change: 87 passed, 26 service-dependent skips. The evaluation server was stopped afterward. The original fixture smoke test above remains fixture evidence only.
 
 The original checklist retains unchecked historical pre-implementation service RED steps that could not run on this workstation. These are process-history limitations, not outstanding implementation or measurement gates.
+
+## Admission optimization verification
+
+The retained build is `b3b48e9`, with async authentication and direct status JSON responses. A later native-networking experiment was removed after a slower benchmark. `git diff --exit-code b3b48e9 -- src pyproject.toml uv.lock fixtures prompts compose.yaml Dockerfile` verified that the final product code, dependencies, fixtures and deployment match the retained build exactly.
+
+After removing the experiment, `uv sync --frozen --extra dev` succeeded, Ruff check and formatting passed, and the full local suite passed 88 tests with 26 explicit service-dependent skips. The thread-pool saturation regression had failed with a timeout before the authentication change. A separate response-equivalence check preserved the complete final JSON body and content type, including plan, action results, history, nulls and timestamps.
+
+Real Compose load comparisons [40956142351](https://github.com/ishhaaab/maintenance-workflow-engine/actions/runs/40956142351) and [40957512974](https://github.com/ishhaaab/maintenance-workflow-engine/actions/runs/40957512974) both exercised the retained build for 300 workflows, each with 600 confirmed action results and zero errors. Its observed pooled admission p95 values were 59.431 and 69.536 ms. All 1,800 observations across three comparisons were independently checked against JSONL journals, completion/effect counts, unique workflow IDs and recomputed p50/p95 values. The full records and artifact hashes are in [admission-results.json](../reports/admission-results.json).
+
+The user accepted the measured latency range. The original 38 ms target remains unmet. No further tuning is deferred as a required implementation task.

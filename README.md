@@ -92,8 +92,9 @@ Tests allocate unique `workflow_test_*` databases, Redis streams and temporary S
 
 - [Fault report](reports/faults.md): all 200 corrected fault cases matched their expected outcomes, including 20 expected review cases.
 - [Load report](reports/load.md): 300/300 fixture-planned workflows completed with 600 confirmed effects and zero errors at client concurrency 1, 5 and 20.
+- [Admission optimization](reports/admission.md): retained build measured 59.431 and 69.536 ms pooled admission p95 at concurrency 20 on separate four-CPU runners. All trials and the rejected native-networking experiment are retained.
 - [Planner report](reports/planner.md): local Qwen2.5-7B-Instruct Q4_0 matched 80/80 held-out synthetic cases, with 100% schema validity, zero unauthorized proposals and 1.804 / 2.304-second p50 / p95 latency.
-- [Verification record](docs/verification.md): clean-clone installation, 87 locally passing tests, real MongoDB/Redis checks, Compose/restart verification and linked CI artifacts.
+- [Verification record](docs/verification.md): clean-clone installation, 88 locally passing tests, real MongoDB/Redis checks, Compose/restart verification and linked CI artifacts.
 
 The real-model measurement gate is complete. The prompt, model and settings were frozen before one held-out pass; all four development passes are retained. These related synthetic templates establish bounded-corpus performance, not production accuracy. See [evaluation instructions](docs/evaluation.md) for model hashes and reproduction commands. Fixture reliability/load results remain separate from live-model quality.
 
