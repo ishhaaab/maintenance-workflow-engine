@@ -1,0 +1,19 @@
+# Explicit test-only helper. Never part of the normal deployment command/model.
+services:
+  ticketing:
+    environment: {ENABLE_FAULTS: "true"}
+  inventory:
+    environment: {ENABLE_FAULTS: "true"}
+  fixture:
+    profiles: [test-tools]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test-tools
+    image: maintenance-workflow-engine-postgres-test-tools:${WORKFLOW_PG_IMAGE_TAG:-test-only}
+    entrypoint: [python, -m, tests.compose_fixture]
+    command: [info]
+    restart: "no"
+    volumes:
+      - {type: volume, source: pg-owner-v1, target: /run/pg-owner, read_only: true, volume: {nocopy: true}}
+      - {type: volume, source: pg-runtime-v1, target: /run/pg-runtime, read_only: true, volume: {nocopy: true}}

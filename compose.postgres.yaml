@@ -1,0 +1,156 @@
+name: maintenance-workflow-engine-postgres
+
+x-image: &image
+  build:
+    context: .
+    target: production
+  image: maintenance-workflow-engine-postgres:${WORKFLOW_PG_IMAGE_TAG:-local}
+
+x-process: &process
+  <<: *image
+  init: true
+  restart: unless-stopped
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+
+x-runtime: &runtime
+  <<: *process
+  environment:
+    WORKFLOW_DATABASE_URL_FILE: /run/pg-runtime/runtime.url
+    WORKFLOW_REDIS_URL: redis://redis:6379/0
+    WORKFLOW_REDIS_STREAM: workflow-pg-wakeups-v1
+    WORKFLOW_REDIS_GROUP: workflow-pg-workers-v1
+    WORKFLOW_TICKETING_URL: http://ticketing:8001
+    WORKFLOW_INVENTORY_URL: http://inventory:8002
+    WORKFLOW_PLANNER: fixture
+  volumes:
+    - type: volume
+      source: pg-runtime-v1
+      target: /run/pg-runtime
+      read_only: true
+      volume: {nocopy: true}
+  depends_on:
+    postgres: {condition: service_healthy}
+  healthcheck:
+    test: [CMD, workflow-engine, init]
+    interval: 5s
+    timeout: 8s
+    retries: 20
+
+services:
+  postgres:
+    image: postgres:17.12@sha256:846a7ddaa67a4b354ae1d21087b683901aa6113a4ed626d3787cfbf6c85e3e07
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/pg-admin/password
+    command:
+      - postgres
+      - -c
+      - log_statement=none
+      - -c
+      - log_min_error_statement=panic
+      - -c
+      - log_error_verbosity=terse
+      - -c
+      - log_parameter_max_length=0
+      - -c
+      - log_parameter_max_length_on_error=0
+      - -c
+      - log_duration=off
+      - -c
+      - log_min_duration_statement=-1
+      - -c
+      - log_min_duration_sample=-1
+      - -c
+      - log_transaction_sample_rate=0
+    volumes:
+      - type: volume
+        source: pg-data-v1
+        target: /var/lib/postgresql/data
+        volume: {nocopy: true}
+      - type: volume
+        source: pg-admin-v1
+        target: /run/pg-admin
+        read_only: true
+        volume: {nocopy: true}
+    ports: ["127.0.0.1:${WORKFLOW_PG_DB_PORT:-15432}:5432"]
+    healthcheck:
+      test: [CMD, pg_isready, -U, postgres, -d, postgres]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+  redis:
+    image: redis:7.2.7@sha256:96af50b9ce0cd7f44f73266ce90bb63a6d6d5655adb8854d2723a0382524c8f3
+    command: [redis-server, --save, "", --appendonly, "no"]
+    tmpfs: [/data]
+    ports: ["127.0.0.1:${WORKFLOW_PG_REDIS_PORT:-16379}:6379"]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  ticketing:
+    <<: *process
+    command: [ticketing, --host, 0.0.0.0, --database, /app/data/tickets.sqlite]
+    volumes: [pg-ticket-data-v1:/app/data]
+    ports: ["127.0.0.1:${WORKFLOW_PG_TICKET_PORT:-18001}:8001"]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/live')"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+  inventory:
+    <<: *process
+    command: [inventory, --host, 0.0.0.0, --database, /app/data/inventory.sqlite]
+    volumes: [pg-inventory-data-v1:/app/data]
+    ports: ["127.0.0.1:${WORKFLOW_PG_INVENTORY_PORT:-18002}:8002"]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health/live')"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+  api:
+    <<: *runtime
+    command: [api, --host, 0.0.0.0]
+    ports: ["127.0.0.1:${WORKFLOW_PG_API_PORT:-18000}:8000"]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
+      interval: 3s
+      timeout: 8s
+      retries: 20
+  dispatcher:
+    <<: *runtime
+    command: [dispatcher]
+  worker-a:
+    <<: *runtime
+    command: [worker, --worker-id, postgres-worker-a]
+  worker-b:
+    <<: *runtime
+    command: [worker, --worker-id, postgres-worker-b]
+  prepare:
+    <<: *image
+    profiles: [operations]
+    user: "0:0"
+    entrypoint: [python, -m, scripts.prepare_postgres]
+    restart: "no"
+    volumes:
+      - {type: volume, source: pg-admin-v1, target: /run/pg-admin, volume: {nocopy: true}}
+      - {type: volume, source: pg-owner-v1, target: /run/pg-owner, volume: {nocopy: true}}
+      - {type: volume, source: pg-runtime-v1, target: /run/pg-runtime, volume: {nocopy: true}}
+      - {type: volume, source: pg-data-v1, target: /deployment-data, read_only: true, volume: {nocopy: true}}
+  migrate:
+    <<: *image
+    profiles: [operations]
+    entrypoint: [python, -m, scripts.prepare_postgres, migrate]
+    restart: "no"
+    volumes:
+      - {type: volume, source: pg-owner-v1, target: /run/pg-owner, read_only: true, volume: {nocopy: true}}
+
+volumes:
+  pg-data-v1:
+  pg-admin-v1:
+  pg-owner-v1:
+  pg-runtime-v1:
+  pg-ticket-data-v1:
+  pg-inventory-data-v1:
