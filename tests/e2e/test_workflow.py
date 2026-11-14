@@ -6,9 +6,10 @@ from tests.support import harness
 
 
 @pytest.mark.integration
-async def test_real_store_simulator_happy_path(mongo_store, tmp_path, clock):
+@pytest.mark.postgres
+async def test_real_store_simulator_happy_path(postgres_store, tmp_path, clock):
     async with AsyncExitStack() as stack:
-        h = await harness(tmp_path, clock, stack, store=mongo_store)
+        h = await harness(tmp_path, clock, stack, store=postgres_store)
         w = await h.admit()
         await h.tick(w)
         await h.approve(w)

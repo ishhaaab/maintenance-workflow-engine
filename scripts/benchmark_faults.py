@@ -15,13 +15,16 @@ def main():
     parser.add_argument("--output-dir", required=True, help="A new directory for this run")
     parser.add_argument("--seeds", default="0,1,2,3,4,5,6,7,8,9")
     args = parser.parse_args()
-    if not os.getenv("TEST_MONGO_URL") or not os.getenv("TEST_REDIS_URL"):
-        raise SystemExit("Set TEST_MONGO_URL and TEST_REDIS_URL to isolated local test services")
+    if not os.getenv("TEST_POSTGRES_URL") or not os.getenv("TEST_REDIS_URL"):
+        raise SystemExit("Set TEST_POSTGRES_URL and TEST_REDIS_URL to isolated local test services")
+    try:
+        seeds = [int(s) for s in args.seeds.split(",")]
+    except ValueError:
+        raise SystemExit("Seeds must be unique integers 0..9") from None
+    if not seeds or len(seeds) != len(set(seeds)) or any(s not in range(10) for s in seeds):
+        raise SystemExit("Seeds must be unique integers 0..9")
     output = Path(args.output_dir).resolve()
     output.mkdir(parents=True, exist_ok=False)
-    seeds = [int(s) for s in args.seeds.split(",")]
-    if len(seeds) != len(set(seeds)) or any(s not in range(10) for s in seeds):
-        raise SystemExit("Seeds must be unique integers 0..9")
     env = {**os.environ, "FAULT_SEEDS": args.seeds, "FAULT_ARTIFACT_DIR": str(output / "cases")}
     with (output / "pytest.log").open("w", encoding="utf-8") as log:
         result = subprocess.run(
@@ -49,7 +52,9 @@ def main():
         "exit_code": result.returncode,
     }
     try:
-        summary.update(summarize_faults(definitions, records, seeds))
+        backend = "PostgreSQL+Redis+HTTP subprocesses"
+        summary.update(summarize_faults(definitions, records, seeds, backend=backend))
+        summary["backend"] = backend
         summary["status"] = "passed" if result.returncode == 0 else "failed"
         summary["full_matrix"] = sorted(seeds) == list(range(10))
     except ValueError as error:

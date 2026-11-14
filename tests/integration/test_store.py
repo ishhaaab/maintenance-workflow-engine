@@ -1,8 +1,8 @@
 import asyncio
-from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from tests.postgres_support import control_execution
 from workflow_engine.domain import (
     Conflict,
     DomainEvent,
@@ -13,11 +13,11 @@ from workflow_engine.domain import (
     transition,
 )
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.postgres]
 
 
-async def test_real_mongo_admission_claim_and_stale_worker(mongo_store):
-    store = mongo_store
+async def test_real_postgres_admission_claim_and_stale_worker(postgres_store):
+    store = postgres_store
     results = await asyncio.gather(
         *(
             store.insert_or_get(Workflow.new("a", "same", WorkflowCreate(text="request")))
@@ -43,10 +43,7 @@ async def test_real_mongo_admission_claim_and_stale_worker(mongo_store):
         await store.save(proposed, 0, None)
     with pytest.raises(Conflict):
         await store.save(proposed.model_copy(update={"request_text": "tampered"}), 0, old.token)
-    await store.collection.update_one(
-        {"workflow_id": workflow.workflow_id},
-        {"$set": {"lease_until": datetime.now(UTC) - timedelta(seconds=1)}},
-    )
+    control_execution(store, workflow, lease_for_s=-1)
     new = await store.claim(workflow.workflow_id, "new")
     with pytest.raises(LeaseLost):
         await store.save(proposed, 0, old.token)
@@ -61,18 +58,15 @@ async def test_real_mongo_admission_claim_and_stale_worker(mongo_store):
         await store.save(proposed, 0, new.token)
 
 
-async def test_real_due_intent_and_enqueue_metadata_are_preserved(mongo_store):
-    store = mongo_store
+async def test_real_due_intent_and_enqueue_metadata_are_preserved(postgres_store):
+    store = postgres_store
     workflow = (
         await store.insert_or_get(Workflow.new("a", "k", WorkflowCreate(text="request")))
     ).workflow
     wakeups = await store.due_wakeups()
     assert [w.workflow_id for w in wakeups] == [workflow.workflow_id]
     assert await store.due_wakeups() == []
-    await store.collection.update_one(
-        {"workflow_id": workflow.workflow_id},
-        {"$set": {"last_enqueued_at": datetime.now(UTC) - timedelta(seconds=6)}},
-    )
+    control_execution(store, workflow, enqueue_due=True)
     assert len(await store.due_wakeups()) == 1
     lease = await store.claim(workflow.workflow_id, "one")
     await store.renew(lease, lease_s=60)

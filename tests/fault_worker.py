@@ -2,9 +2,12 @@
 
 import argparse
 import asyncio
+import json
 from pathlib import Path
 
+from workflow_engine.cli import runtime_loop
 from workflow_engine.runtime import resources
+from workflow_engine.telemetry import configure_logging
 
 
 async def run(args):
@@ -12,10 +15,17 @@ async def run(args):
 
         async def stop_at_marker():
             Path(args.marker).write_text("injection reached", encoding="utf-8")
-            await asyncio.Event().wait()
+            if args.resume is None:
+                await asyncio.Event().wait()
+            else:
+                while not Path(args.resume).exists():
+                    await asyncio.sleep(0.02)
 
         if args.mode == "dispatch":
             await store.due_wakeups()
+            await stop_at_marker()
+        elif args.mode == "pending":
+            assert await broker.receive("abandoned-worker") is not None
             await stop_at_marker()
         else:
             gateway = runner.gateways["ticket"]
@@ -23,18 +33,29 @@ async def run(args):
 
             async def crash_point(action):
                 if args.mode == "after_effect":
-                    await submit(action)
+                    outcome = await submit(action)
+                    await stop_at_marker()
+                    return outcome
                 await stop_at_marker()
+                return await submit(action)
 
             gateway.submit = crash_point
-            await runner.tick(args.workflow_id, "crash-worker")
+            result = await runner.tick(args.workflow_id, "crash-worker")
+            print(json.dumps(result.model_dump()))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--mode", choices=["dispatch", "before_effect", "after_effect"], required=True
+        "--mode", choices=["dispatch", "pending", "before_effect", "after_effect"], required=True
     )
     parser.add_argument("--workflow-id", required=True)
     parser.add_argument("--marker", required=True)
-    asyncio.run(run(parser.parse_args()))
+    parser.add_argument("--resume")
+    configure_logging()
+    try:
+        asyncio.run(run(parser.parse_args()), loop_factory=runtime_loop)
+    except Exception:
+        # Dependency failures are expected in outage tests, never print driver row/URL diagnostics.
+        print("fault_worker_dependency_unavailable")
+        raise SystemExit(2) from None

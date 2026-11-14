@@ -7,7 +7,7 @@ import platform
 import time
 from pathlib import Path
 
-from .domain import ExecutablePlan, NeedsInput, WorkflowCreate
+from .domain import ExecutablePlan, NeedsInput, WorkflowCreate, canonical_hash
 from .policy import validate_and_compile
 
 
@@ -132,7 +132,37 @@ async def evaluate_planner(cases_path, planner, catalog):
     }
 
 
-def summarize_faults(definitions, results, seeds=range(10)):
+def _check_fault_identities(result, case):
+    """New measurements prove original action keys and per-identity ledger counts."""
+    try:
+        tenant, workflow = result["tenant_id"], result["workflow_id"]
+        actions = result["actions"]
+        keys = {a["action_id"]: a["idempotency_key"] for a in actions}
+        original = result["initial_action_keys"]
+        expected_keys = {
+            action_id: canonical_hash([tenant, workflow, result["plan_hash"], action_id])
+            for action_id in keys
+        }
+        effects = {
+            canonical_hash([tenant, workflow, action_id]): count
+            for action_id, count in case["expected_effects"].items()
+            if count
+        }
+        valid = (
+            len(keys) == len(actions)
+            and keys == original == expected_keys
+            and {action_id for action_id, count in case["expected_effects"].items() if count}
+            <= keys.keys()
+            and (bool(keys) or case["expected_state"] == "NEEDS_INPUT")
+            and result["logical_effect_counts"] == effects
+        )
+    except (KeyError, TypeError, ValueError):
+        valid = False
+    if not valid:
+        raise ValueError("Fault action identity or logical effect mismatch")
+
+
+def summarize_faults(definitions, results, seeds=range(10), *, backend=None):
     expected = {(case["id"], seed): case for case in definitions for seed in seeds}
     seen = set()
     review = 0
@@ -149,6 +179,10 @@ def summarize_faults(definitions, results, seeds=range(10)):
             or result["effects"] != case["expected_effects"]
         ):
             raise ValueError(f"Fault expectation mismatch: {key}")
+        if backend is not None:
+            if result.get("backend") != backend:
+                raise ValueError("Fault backend evidence mismatch")
+            _check_fault_identities(result, case)
         review += int(case["review_expected"])
     if seen != set(expected):
         raise ValueError("Incomplete fault matrix")

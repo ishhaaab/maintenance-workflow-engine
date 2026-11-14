@@ -1,3 +1,6 @@
+import hashlib
+from copy import deepcopy
+
 import httpx
 import pytest
 
@@ -34,6 +37,54 @@ def test_fault_report_rejects_missing_runs_wrong_effects_and_wrong_adapter():
     ):
         with pytest.raises(ValueError):
             summarize_faults(definitions, results, seeds=[0])
+
+
+def test_postgres_fault_report_requires_backend_original_keys_and_logical_effects():
+    definitions = [
+        {
+            "id": "case",
+            "expected_state": "SUCCEEDED",
+            "expected_effects": {"ticket": 1, "reservation": 0},
+            "review_expected": False,
+        }
+    ]
+    key = hashlib.sha256(('["tenant-a","run-1","' + "f" * 64 + '","ticket"]').encode()).hexdigest()
+    logical_id = hashlib.sha256(b'["tenant-a","run-1","ticket"]').hexdigest()
+    backend = "PostgreSQL+Redis+HTTP subprocesses"
+    result = {
+        "case_id": "case",
+        "seed": 0,
+        "state": "SUCCEEDED",
+        "effects": {"ticket": 1, "reservation": 0},
+        "planner": "fixture",
+        "passed": True,
+        "backend": backend,
+        "tenant_id": "tenant-a",
+        "workflow_id": "run-1",
+        "plan_hash": "f" * 64,
+        "initial_action_keys": {"ticket": key},
+        "actions": [{"action_id": "ticket", "idempotency_key": key}],
+        "logical_effect_counts": {logical_id: 1},
+    }
+    assert summarize_faults(definitions, [result], [0], backend=backend)["runs"] == 1
+    invalid = []
+    for field, value in (
+        ("backend", "MongoDB+Redis+HTTP subprocesses"),
+        ("logical_effect_counts", {"different-logical-action": 1}),
+        ("logical_effect_counts", {logical_id: 2}),
+        ("initial_action_keys", {"ticket": "changed-key"}),
+        ("actions", [{"action_id": "ticket", "idempotency_key": "changed-key"}]),
+        ("actions", result["actions"] * 2),
+        ("actions", []),
+    ):
+        invalid.append({**result, field: value})
+    incomplete = deepcopy(result)
+    del incomplete["initial_action_keys"]
+    invalid.append(incomplete)
+    invalid.append({**result, "actions": [], "initial_action_keys": {}})
+    for record in invalid:
+        with pytest.raises(ValueError):
+            summarize_faults(definitions, [record], [0], backend=backend)
 
 
 def test_load_report_keeps_latency_and_outcome_denominators_separate():
