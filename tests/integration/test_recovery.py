@@ -1,10 +1,9 @@
 from contextlib import AsyncExitStack
 
-import httpx
 import pytest
 
-from tests.integration.test_api import app_for
 from tests.support import harness
+from workflow_engine.domain import Conflict
 from workflow_engine.gateways import EffectResult
 
 
@@ -190,26 +189,21 @@ async def test_cancellation_rejects_unresolved_earlier_submission_during_replay(
             clock.advance(2)
             _, w = await h.tick(w)
             assert w.state == "READY"
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app_for(h)),
-            base_url="http://api",
-            headers={"X-API-Key": "a-key"},
-        ) as client:
-            path = f"/workflows/{w.workflow_id}/cancel"
-            assert (
-                await client.post(path, json={"expected_revision": w.revision})
-            ).status_code == 409
-            await submit(sent[0])  # The original delayed request finally commits.
-            gateway.submit = submit
-            if not advance_to_ready:
-                clock.advance(2)
-                await h.tick(w)
-            _, w = await h.tick(w)
-            assert w.actions[0].status == "CONFIRMED"
-            assert (
-                await client.post(path, json={"expected_revision": w.revision})
-            ).status_code == 200
-            assert sum((await h.ticketing.get("/__effects")).json().values()) == 1
+        before = await h.get(w)
+        with pytest.raises(Conflict):
+            await h.cancel(w)
+        assert await h.get(w) == before
+        await submit(sent[0])  # The original delayed request finally commits.
+        gateway.submit = submit
+        if not advance_to_ready:
+            clock.advance(2)
+            await h.tick(w)
+        _, w = await h.tick(w)
+        assert w.actions[0].status == "CONFIRMED"
+        cancelled = await h.cancel(w)
+        assert cancelled.state == "CANCELLED"
+        assert cancelled.actions[0] == w.actions[0]
+        assert sum((await h.ticketing.get("/__effects")).json().values()) == 1
 
 
 async def test_key_payload_conflict_stops_without_accepting_wrong_effect(tmp_path, clock):

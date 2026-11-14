@@ -5,6 +5,12 @@ import asyncio
 import json
 import os
 import socket
+import sys
+
+
+def runtime_loop():
+    """Psycopg async cannot use native Windows' default Proactor loop."""
+    return asyncio.SelectorEventLoop() if sys.platform == "win32" else asyncio.new_event_loop()
 
 
 def main():
@@ -40,12 +46,22 @@ def main():
                 enable_faults=args.enable_faults or os.getenv("ENABLE_FAULTS") == "true",
             )
             port = 8001 if args.command == "ticketing" else 8002
-        uvicorn.run(app, host=args.host, port=args.port or port, access_log=False, log_config=None)
+        uvicorn.run(
+            app,
+            host=args.host,
+            port=args.port or port,
+            access_log=False,
+            log_config=None,
+            loop="workflow_engine.cli:runtime_loop" if args.command == "api" else "auto",
+        )
     else:
         from .runtime import run_process
 
         try:
-            result = asyncio.run(run_process(args.command, args.worker_id, args.workflow_id))
+            result = asyncio.run(
+                run_process(args.command, args.worker_id, args.workflow_id),
+                loop_factory=runtime_loop,
+            )
             if result:
                 print(json.dumps(result))
         except KeyboardInterrupt:

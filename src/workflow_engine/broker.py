@@ -1,4 +1,4 @@
-"""Replaceable Redis wakeups. MongoDB due intent repairs every publication gap."""
+"""Replaceable Redis wakeups. PostgreSQL due intent repairs every publication gap."""
 
 from typing import Protocol
 
@@ -29,7 +29,11 @@ async def dispatch_once(store: WorkflowStore, broker: WakeupBroker) -> int:
 
 class RedisWakeupBroker:
     def __init__(
-        self, redis, stream="workflow-wakeups", group="workflow-workers", reclaim_idle_ms=60000
+        self,
+        redis,
+        stream="workflow-pg-wakeups-v1",
+        group="workflow-pg-workers-v1",
+        reclaim_idle_ms=60000,
     ):
         self.redis, self.stream, self.group = redis, stream, group
         self.reclaim_idle_ms = reclaim_idle_ms

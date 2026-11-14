@@ -1,4 +1,4 @@
-"""Show a plan first; execute only with --approve."""
+"""Historical standalone demo. Unavailable during the Phase 1 identity/review gap."""
 
 import argparse
 import asyncio
@@ -12,7 +12,15 @@ import httpx
 REQUEST = "Create an inspection ticket for pump P-17 and reserve one seal kit if available."
 
 
+def _retired():
+    raise SystemExit(
+        "Phase 1: standalone admission and approval demo are unavailable pending identity and review. "
+        "Legacy API keys grant no access. Use isolated executor tests, not a production approval override."
+    )
+
+
 async def run_demo(client, approve=False, timeout_s=60):
+    _retired()
     response = await client.post(
         "/workflows", json={"text": REQUEST}, headers={"Idempotency-Key": uuid4().hex}
     )
@@ -58,6 +66,7 @@ async def run_demo(client, approve=False, timeout_s=60):
 
 
 async def main(args):
+    _retired()
     key = os.getenv("WORKFLOW_DEMO_API_KEY")
     if not key:
         raise SystemExit("Set WORKFLOW_DEMO_API_KEY to the tenant-A key from your .env")

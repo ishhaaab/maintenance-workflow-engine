@@ -5,56 +5,57 @@ import logging
 from contextlib import AsyncExitStack, asynccontextmanager
 
 import httpx
-from pymongo import AsyncMongoClient
 from redis.asyncio import Redis
 
 from .broker import RedisWakeupBroker, dispatch_once
+from .db import SchemaNotCurrent, create_database
 from .gateways import HttpEffectGateway
 from .planner import FixturePlanner
 from .policy import CatalogProvider
+from .postgres_store import PostgresWorkflowStore
 from .runner import Runner
 from .settings import Settings
-from .store import MongoWorkflowStore
 
 log = logging.getLogger(__name__)
 
 
-def _clients(settings):
-    mongo = AsyncMongoClient(
-        settings.mongo_url.get_secret_value(),
-        tz_aware=True,
-        serverSelectionTimeoutMS=3000,
-        connectTimeoutMS=3000,
-        socketTimeoutMS=5000,
-        retryWrites=False,
-        retryReads=False,
-    )
-    redis = Redis.from_url(
+def _redis(settings):
+    return Redis.from_url(
         settings.redis_url.get_secret_value(),
         decode_responses=True,
         socket_connect_timeout=3,
         socket_timeout=3,
     )
-    return mongo, redis, MongoWorkflowStore(mongo[settings.mongo_database])
+
+
+def _broker(settings, redis):
+    return RedisWakeupBroker(redis, stream=settings.redis_stream, group=settings.redis_group)
 
 
 def api_application():
     from .api import create_app
 
     settings = Settings()
-    mongo, redis, store = _clients(settings)
-    app = create_app(
-        settings, store, CatalogProvider.from_file(settings.catalog_path), RedisWakeupBroker(redis)
-    )
+    database = create_database(settings.runtime_database_url())
+    store = PostgresWorkflowStore(database)
+    # Construct Redis inside the lifespan so failures still close the database.
+    broker = _broker(settings, None)
+    app = create_app(settings, store, None, broker)
 
     @asynccontextmanager
     async def lifespan(_app):
-        try:
-            await store.initialize()
+        async with AsyncExitStack() as stack:
+            stack.push_async_callback(database.close)
+            redis = _redis(settings)
+            stack.push_async_callback(redis.aclose)
+            broker.redis = redis
+            try:
+                await store.initialize()
+            except SchemaNotCurrent:
+                # Keep public liveness/readiness available. No command route can
+                # read or mutate executions while the schema is unavailable.
+                log.warning("postgres_schema_unavailable")
             yield
-        finally:
-            await redis.aclose()
-            await mongo.close()
 
     app.router.lifespan_context = lifespan
     return app
@@ -63,57 +64,62 @@ def api_application():
 @asynccontextmanager
 async def resources(settings=None):
     settings = settings or Settings()
-    mongo, redis, store = _clients(settings)
-    try:
+    database = create_database(settings.runtime_database_url())
+    async with AsyncExitStack() as stack:
+        stack.push_async_callback(database.close)
+        redis = _redis(settings)
+        stack.push_async_callback(redis.aclose)
+        store = PostgresWorkflowStore(database)
         await store.initialize()
-        async with AsyncExitStack() as stack:
-            gateways = {}
-            for kind, url in (
-                ("ticket", settings.ticketing_url),
-                ("reservation", settings.inventory_url),
-            ):
-                client = await stack.enter_async_context(
-                    httpx.AsyncClient(
-                        base_url=url,
-                        transport=httpx.AsyncHTTPTransport(retries=0),
-                        timeout=settings.external_timeout_s,
-                        trust_env=False,
-                    )
+        gateways = {}
+        for kind, url in (
+            ("ticket", settings.ticketing_url),
+            ("reservation", settings.inventory_url),
+        ):
+            client = await stack.enter_async_context(
+                httpx.AsyncClient(
+                    base_url=url,
+                    transport=httpx.AsyncHTTPTransport(retries=0),
+                    timeout=settings.external_timeout_s,
+                    trust_env=False,
                 )
-                gateways[kind] = HttpEffectGateway(client, kind, settings.external_timeout_s)
-            if settings.planner == "fixture":
-                planner = FixturePlanner.from_file(settings.fixtures_path)
-            else:
-                from .planner import ModelPlanner
-
-                client = await stack.enter_async_context(
-                    httpx.AsyncClient(
-                        base_url=settings.model_url.rstrip("/") + "/",
-                        transport=httpx.AsyncHTTPTransport(retries=0),
-                        timeout=settings.planner_timeout_s,
-                        trust_env=False,
-                    )
-                )
-                planner = ModelPlanner(client, settings)
-            runner = Runner(
-                store,
-                planner,
-                CatalogProvider.from_file(settings.catalog_path),
-                gateways,
-                settings.lease_s,
-                settings.heartbeat_s,
-                settings.planner_timeout_s,
             )
-            yield store, RedisWakeupBroker(redis), runner
-    finally:
-        await redis.aclose()
-        await mongo.close()
+            gateways[kind] = HttpEffectGateway(client, kind, settings.external_timeout_s)
+        if settings.planner == "fixture":
+            planner = FixturePlanner.from_file(settings.fixtures_path)
+        else:
+            from .planner import ModelPlanner
+
+            client = await stack.enter_async_context(
+                httpx.AsyncClient(
+                    base_url=settings.model_url.rstrip("/") + "/",
+                    transport=httpx.AsyncHTTPTransport(retries=0),
+                    timeout=settings.planner_timeout_s,
+                    trust_env=False,
+                )
+            )
+            planner = ModelPlanner(client, settings)
+        runner = Runner(
+            store,
+            planner,
+            CatalogProvider.from_file(settings.catalog_path),
+            gateways,
+            settings.lease_s,
+            settings.heartbeat_s,
+            settings.planner_timeout_s,
+        )
+        yield store, _broker(settings, redis), runner
 
 
 async def run_process(command, worker_id, workflow_id=None):
+    if command == "init":
+        database = create_database(Settings().runtime_database_url())
+        try:
+            await database.check_schema()
+            return {"status": "schema_current"}
+        finally:
+            await database.close()
     async with resources() as (store, broker, runner):
-        if command == "init":
-            return {"status": "initialized"}
         if command == "tick":
             return (await runner.tick(workflow_id, worker_id)).model_dump()
         delay = 1

@@ -1,36 +1,61 @@
+"""Retired standalone commands must fail before sending even one HTTP request."""
+
 import asyncio
-from contextlib import AsyncExitStack
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
-from scripts.demo import run_demo
-from tests.integration.test_api import app_for
-from tests.support import harness
+from scripts import benchmark_load, demo
 
 
 @pytest.mark.parametrize("approve", [False, True])
-async def test_demo_only_executes_after_explicit_opt_in(tmp_path, clock, approve):
-    async with AsyncExitStack() as stack:
-        h = await harness(tmp_path, clock, stack)
-        stop = asyncio.Event()
+async def test_demo_is_explicitly_unavailable_before_any_request(approve):
+    requests = []
 
-        async def worker():
-            while not stop.is_set():
-                for wakeup in await h.store.due_wakeups(republish_after_s=0):
-                    await h.runner.tick(wakeup.workflow_id, "demo-worker")
-                await asyncio.sleep(0.01)
+    async def spy(request):
+        requests.append(request)
+        return httpx.Response(500)
 
-        task = asyncio.create_task(worker())
-        try:
-            async with httpx.AsyncClient(
-                transport=httpx.ASGITransport(app=app_for(h)),
-                base_url="http://api",
-                headers={"X-API-Key": "a-key"},
-            ) as client:
-                result = await run_demo(client, approve=approve, timeout_s=5)
-                assert result["state"] == ("SUCCEEDED" if approve else "AWAITING_APPROVAL")
-                assert sum((await h.ticketing.get("/__effects")).json().values()) == int(approve)
-        finally:
-            stop.set()
-            await task
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(spy), base_url="http://api"
+    ) as client:
+        with pytest.raises(SystemExit) as error:
+            await demo.run_demo(client, approve=approve)
+    assert error.value.code and "Phase 1" in str(error.value)
+    assert requests == []
+
+
+async def test_load_run_one_cannot_send_admission_or_approval():
+    requests = []
+
+    async def spy(request):
+        requests.append(request)
+        return httpx.Response(500)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(spy), base_url="http://api"
+    ) as client:
+        with pytest.raises(SystemExit) as error:
+            await benchmark_load.run_one(client, asyncio.Semaphore(1), 1)
+    assert error.value.code and "Phase 1" in str(error.value)
+    assert requests == []
+
+
+@pytest.mark.parametrize("command", [demo.main, benchmark_load.run])
+async def test_retired_entrypoints_fail_before_client_or_report_creation(
+    command, monkeypatch, tmp_path
+):
+    def forbidden_client(*args, **kwargs):
+        pytest.fail("Retired command constructed a network client")
+
+    monkeypatch.setattr(httpx, "AsyncClient", forbidden_client)
+    monkeypatch.setenv("WORKFLOW_DEMO_API_KEY", "legacy")
+    monkeypatch.setenv("WORKFLOW_BENCHMARK_API_KEY", "legacy")
+    output = tmp_path / "must-not-exist.json"
+    with pytest.raises(SystemExit) as error:
+        await command(
+            SimpleNamespace(url="http://api", approve=True, approve_plans=True, output=str(output))
+        )
+    assert error.value.code and "Phase 1" in str(error.value)
+    assert not output.exists()

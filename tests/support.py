@@ -5,7 +5,8 @@ import httpx
 
 from external_simulators.inventory import create_app as inventory_app
 from external_simulators.ticketing import create_app as ticket_app
-from workflow_engine.domain import DomainEvent, Workflow, WorkflowCreate, transition
+from tests.postgres_support import seed_approved_run
+from workflow_engine.domain import Conflict, DomainEvent, Workflow, WorkflowCreate, transition
 from workflow_engine.gateways import HttpEffectGateway
 from workflow_engine.planner import FixturePlanner
 from workflow_engine.policy import CatalogProvider
@@ -39,10 +40,18 @@ class Harness:
 
     async def approve(self, workflow):
         workflow = await self.get(workflow)
+        return await seed_approved_run(self.store, workflow, workflow.revision, workflow.plan_hash)
+
+    async def cancel(self, workflow, expected_revision=None):
+        """Internal safety assertion seam. Never a product HTTP/CLI capability."""
+        current = await self.get(workflow)
+        if current.state == "CANCELLED":
+            return current
+        revision = workflow.revision if expected_revision is None else expected_revision
+        if current.revision != revision:
+            raise Conflict("Stale fixture revision")
         return await self.store.save(
-            transition(workflow, DomainEvent(kind="approved", plan_hash=workflow.plan_hash)),
-            workflow.revision,
-            None,
+            transition(current, DomainEvent(kind="cancelled")), revision, None
         )
 
 

@@ -1,4 +1,4 @@
-"""Fixture-only HTTP load experiment with explicit per-plan approval."""
+"""Historical load measurement/parser. New HTTP load runs are unavailable in Phase 1."""
 
 import argparse
 import asyncio
@@ -16,7 +16,15 @@ from workflow_engine.evaluation import RunJournal, environment, summarize_load
 REQUEST = "Create an inspection ticket for pump P-17 and reserve one seal kit if available."
 
 
+def _retired():
+    raise SystemExit(
+        "Phase 1: standalone admission/approval load runs are unavailable pending identity and review. "
+        "Historical reports and measurement parsing remain available; no new run was performed."
+    )
+
+
 async def run_one(client, semaphore, timeout_s):
+    _retired()
     async with semaphore:
         start = time.perf_counter()
         record = {
@@ -105,6 +113,7 @@ async def run_one(client, semaphore, timeout_s):
 
 
 async def run(args):
+    _retired()
     key = os.environ.get("WORKFLOW_BENCHMARK_API_KEY")
     if not key or not args.approve_plans:
         raise SystemExit(
