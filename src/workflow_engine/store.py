@@ -1,4 +1,4 @@
-"""Single-document authority. Redis and external systems never participate in these writes."""
+"""Store contract, memory rule fake and historical MongoDB adapter."""
 
 import asyncio
 from datetime import UTC, datetime, timedelta
@@ -6,6 +6,7 @@ from typing import Protocol
 from uuid import uuid4
 
 from bson import BSON
+from pydantic import ValidationError
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
@@ -52,6 +53,43 @@ class WorkflowStore(Protocol):
     async def due_wakeups(self, limit: int = 100, republish_after_s: int = 5) -> list[Wakeup]: ...
 
 
+def _validated_snapshot(workflow: Workflow | dict) -> Workflow:
+    try:
+        # model_copy(update=...) deliberately skips Pydantic validation.
+        # Invalid copied nested values must not leak through serializer warnings either.
+        values = workflow.model_dump(warnings=False) if isinstance(workflow, Workflow) else workflow
+        return Workflow.model_validate(values)
+    except (ValidationError, ValueError, TypeError):
+        raise Conflict("Invalid workflow snapshot") from None
+
+
+def _identical(before, after) -> bool:
+    """JSON identity includes numeric types and the sign of floating-point zero."""
+    if isinstance(before, Model) and isinstance(after, Model):
+        return _identical(before.model_dump(), after.model_dump())
+    if type(before) is not type(after):
+        return False
+    if isinstance(before, dict):
+        if len(before) != len(after):
+            return False
+        # Lookup finds a Python-equal key; compare the actual stored key too so
+        # 1/1.0, True/1 and negative/positive zero do not share an identity.
+        after_keys = {key: key for key in after}
+        return all(
+            key in after_keys
+            and _identical(key, after_keys[key])
+            and _identical(value, after[after_keys[key]])
+            for key, value in before.items()
+        )
+    if isinstance(before, (list, tuple)):
+        return len(before) == len(after) and all(
+            _identical(a, b) for a, b in zip(before, after, strict=True)
+        )
+    if isinstance(before, float):
+        return before.hex() == after.hex()
+    return before == after
+
+
 def _validate_change(old: Workflow, new: Workflow, revision: int):
     if old.revision != revision or new.revision != revision + 1:
         raise Conflict("Revision conflict")
@@ -59,7 +97,7 @@ def _validate_change(old: Workflow, new: Workflow, revision: int):
         raise Conflict("Immutable admission field")
     if old.plan is not None:
         if any(
-            getattr(old, key) != getattr(new, key)
+            not _identical(getattr(old, key), getattr(new, key))
             for key in ("plan", "plan_hash", "catalog_version")
         ):
             raise Conflict("Immutable validated plan")
@@ -70,16 +108,47 @@ def _validate_change(old: Workflow, new: Workflow, revision: int):
     ):
         raise Conflict("Immutable approval")
     for before, after in zip(old.actions, new.actions, strict=False):
-        if (before.action_id, before.arguments, before.idempotency_key) != (
-            after.action_id,
-            after.arguments,
-            after.idempotency_key,
+        if (
+            before.action_id != after.action_id
+            or not _identical(before.arguments, after.arguments)
+            or before.idempotency_key != after.idempotency_key
         ):
             raise Conflict("Immutable action identity")
-        if before.status in {"CONFIRMED", "SKIPPED"} and before != after:
+        if before.status in {"CONFIRMED", "SKIPPED"} and not _identical(before, after):
             raise Conflict("Immutable confirmed outcome")
-    validated = Workflow.model_validate(new.model_dump())
-    if len(BSON.encode(validated.model_dump())) > MAX_DOCUMENT_BYTES:
+    _validated_snapshot(new)
+
+
+def _validate_admission(workflow: Workflow):
+    """Generic admission creates planning work, never imported execution authority."""
+    if (
+        workflow.state != "PENDING_PLAN"
+        or workflow.revision != 0
+        or workflow.plan is not None
+        or workflow.plan_hash is not None
+        or workflow.catalog_version is not None
+        or workflow.clarification is not None
+        or workflow.actions
+        or workflow.planning_attempts != 0
+        or workflow.retry_phase is not None
+        or workflow.approved_plan_hash is not None
+        or workflow.approved_at is not None
+    ):
+        raise Conflict("Admission requires unapproved planning work")
+
+
+def _reject_new_approval(old: Workflow, new: Workflow):
+    # Deliberately separate from intrinsic immutability. Pure domain approval and
+    # transaction-owned review/isolated test setup retain those intrinsic checks.
+    if old.approved_plan_hash is None and (
+        new.approved_plan_hash is not None or new.approved_at is not None
+    ):
+        raise Conflict("General save cannot authorize execution")
+
+
+def _validate_bson_budget(workflow: Workflow):
+    """Historical MongoDB storage defense, separate from the shared compact budget."""
+    if len(BSON.encode(workflow.model_dump())) > MAX_DOCUMENT_BYTES:
         raise Conflict("Workflow exceeds BSON budget")
 
 
@@ -116,7 +185,7 @@ def _delay(workflow: Workflow) -> int:
 
 
 class MemoryWorkflowStore:
-    """Contract fake with an injected clock, not evidence of MongoDB durability."""
+    """Contract fake with an injected clock, not evidence of database concurrency."""
 
     def __init__(self, clock=utcnow):
         self._clock = clock
@@ -128,17 +197,30 @@ class MemoryWorkflowStore:
         return True
 
     async def insert_or_get(self, workflow: Workflow) -> AdmissionResult:
+        workflow = _validated_snapshot(workflow)
+        _validate_admission(workflow)
         async with self._lock:
             key = (workflow.tenant_id, workflow.admission_key)
             if key in self._admissions:
                 existing = self._documents[self._admissions[key]]
-                if existing.request_hash != workflow.request_hash:
+                if (
+                    existing.request_hash != workflow.request_hash
+                    or existing.request_text != workflow.request_text
+                ):
                     raise Conflict("Admission payload mismatch")
                 return AdmissionResult(workflow=existing.model_copy(deep=True), created=False)
+            if workflow.workflow_id in self._documents:
+                raise Conflict("Workflow identity already exists")
             now = self._clock()
             workflow = workflow.model_copy(
-                update={"created_at": now, "updated_at": now, "next_run_at": now}, deep=True
+                update={
+                    "created_at": now,
+                    "updated_at": now,
+                    "next_run_at": now if workflow.next_run_at is not None else None,
+                },
+                deep=True,
             )
+            workflow = _validated_snapshot(workflow)
             self._admissions[key] = workflow.workflow_id
             self._documents[workflow.workflow_id] = workflow
             return AdmissionResult(workflow=workflow.model_copy(deep=True), created=True)
@@ -167,14 +249,18 @@ class MemoryWorkflowStore:
             return _lease(w.model_copy(deep=True))
 
     async def save(self, workflow, expected_revision, lease_token):
+        workflow = _validated_snapshot(workflow)
         async with self._lock:
-            old = self._documents[workflow.workflow_id]
+            old = self._documents.get(workflow.workflow_id)
+            if old is None or old.tenant_id != workflow.tenant_id:
+                raise NotFound("Workflow not found")
             now = self._clock()
             if lease_token:
                 if old.lease_token != lease_token or not _live(old, now):
                     raise LeaseLost("Lease lost")
             elif _live(old, now):
                 raise Conflict("Active worker lease")
+            _reject_new_approval(old, workflow)
             _validate_change(old, workflow, expected_revision)
             data = workflow.model_dump()
             data.update({key: getattr(old, key) for key in _OPERATIONAL})
@@ -185,7 +271,7 @@ class MemoryWorkflowStore:
                 else None,
             )
             data["wake_seq"] = old.wake_seq + int(workflow.next_run_at is not None)
-            saved = Workflow.model_validate(data)
+            saved = _validated_snapshot(data)
             self._documents[workflow.workflow_id] = saved
             return saved.model_copy(deep=True)
 
@@ -261,6 +347,7 @@ class MongoWorkflowStore:
         return True
 
     async def insert_or_get(self, workflow):
+        workflow = _validated_snapshot(workflow)
         query = {"tenant_id": workflow.tenant_id, "admission_key": workflow.admission_key}
         # Conditional pipeline upsert timestamps new admissions using MongoDB time.
         fields = {
@@ -282,7 +369,10 @@ class MongoWorkflowStore:
         except DuplicateKeyError:
             document = await self.collection.find_one(query)
         existing = _decode(document)
-        if existing.request_hash != workflow.request_hash:
+        if (
+            existing.request_hash != workflow.request_hash
+            or existing.request_text != workflow.request_text
+        ):
             raise Conflict("Admission payload mismatch")
         return AdmissionResult(
             workflow=existing, created=existing.workflow_id == workflow.workflow_id
@@ -316,10 +406,12 @@ class MongoWorkflowStore:
         return _lease(_decode(document)) if document else None
 
     async def save(self, workflow, expected_revision, lease_token):
+        workflow = _validated_snapshot(workflow)
         old = await self.get(workflow.workflow_id, workflow.tenant_id)
         if lease_token and old.lease_token != lease_token:
             raise LeaseLost("Lease lost")
         _validate_change(old, workflow, expected_revision)
+        _validate_bson_budget(workflow)
         query = {
             "workflow_id": workflow.workflow_id,
             "tenant_id": workflow.tenant_id,

@@ -72,12 +72,28 @@ def canonical_hash(value: object) -> str:
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
+def _reject_nul(value):
+    if isinstance(value, str):
+        if "\0" in value:
+            raise ValueError("NUL characters are not supported")
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            _reject_nul(key)
+            _reject_nul(item)
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        for item in value:
+            _reject_nul(item)
+    elif isinstance(value, BaseModel):
+        _reject_nul(value.model_dump(warnings=False))
+
+
 class Model(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     @field_validator("*")
     @classmethod
     def utc_dates(cls, value):
+        _reject_nul(value)
         if isinstance(value, datetime):
             if value.tzinfo is None or value.utcoffset() is None:
                 raise ValueError("Timezone-aware UTC timestamp required")

@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+from tests.store_contract import StoreContract
 from workflow_engine.domain import (
     Conflict,
     DomainEvent,
@@ -11,6 +12,25 @@ from workflow_engine.domain import (
     transition,
 )
 from workflow_engine.store import MemoryWorkflowStore
+
+
+@pytest.fixture
+def store(clock):
+    return MemoryWorkflowStore(clock)
+
+
+class TestMemoryStoreContract(StoreContract):
+    pass
+
+
+def test_historical_bson_budget_is_still_separate_and_enforced():
+    from workflow_engine.store import _validate_bson_budget, _validated_snapshot
+
+    workflow = Workflow.new("tenant-a", "bson", WorkflowCreate(text="Inspect"))
+    workflow = workflow.model_copy(update={"model_metadata": {"values": [1e308] * 35000}})
+    assert _validated_snapshot(workflow).model_metadata == workflow.model_metadata
+    with pytest.raises(Conflict, match="BSON budget"):
+        _validate_bson_budget(workflow)
 
 
 async def insert(store, key="key", text="Create an inspection ticket for P-17", tenant="tenant-a"):

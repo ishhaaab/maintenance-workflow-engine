@@ -41,3 +41,12 @@ def test_transition_log_retains_action_and_attempt_without_raw_arguments():
     assert result["attempt"] == 2
     assert result["state"] == "RECONCILING"
     assert "private" not in json.dumps(result)
+
+
+def test_transition_log_drops_postgres_connection_and_machine_looking_provider_text():
+    record = logging.LogRecord("test", logging.ERROR, __file__, 1, "workflow_transition", (), None)
+    record.connection_url = "postgresql://private-user:private-password@private-host/db"
+    record.reason_code = "private_provider_message"
+    record.model_metadata = {"raw": "private_model_output"}
+    record.lease_owner = "private_owner"
+    assert "private" not in JsonFormatter().format(record)

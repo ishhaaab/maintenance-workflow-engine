@@ -122,3 +122,36 @@ def test_cancel_preserves_confirmed_ticket():
     workflow = transition(workflow, DomainEvent(kind="cancelled"))
     assert workflow.state == "CANCELLED"
     assert workflow.actions[0].result == {"id": "t1"}
+
+
+@pytest.mark.parametrize("field", ["tenant_id", "admission_key", "request_text"])
+def test_nul_in_workflow_text_is_rejected(field):
+    data = planned().model_dump()
+    data[field] = "private\0content"
+    with pytest.raises(ValidationError, match="NUL"):
+        Workflow.model_validate(data)
+
+
+@pytest.mark.parametrize("value", [{"nested": ["secret\0value"]}, {"nested": {"key\0": None}}])
+@pytest.mark.parametrize("field", ["model_metadata", "arguments", "result"])
+def test_nul_in_nested_json_values_and_keys_is_rejected(field, value):
+    data = planned().model_dump()
+    if field == "model_metadata":
+        data[field] = value
+    else:
+        data["actions"][0][field] = value
+    with pytest.raises(ValidationError, match="NUL"):
+        Workflow.model_validate(data)
+
+
+def test_nul_request_is_rejected_without_rejecting_other_text_or_json_null():
+    with pytest.raises(ValidationError, match="NUL"):
+        WorkflowCreate(text="Inspect\0pump")
+    text = "Inspect\\u0000\n\tpump Ω 水 😀"
+    request = WorkflowCreate(text=text)
+    assert request.text == text
+    assert WorkflowCreate(text="x" * 2000).text == "x" * 2000
+    workflow = Workflow.new("t" * 128, "k" * 128, request)
+    data = workflow.model_dump()
+    data["model_metadata"] = {text: [None, {"null": None}]}
+    assert Workflow.model_validate(data).model_metadata == data["model_metadata"]
