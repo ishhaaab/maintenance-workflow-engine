@@ -2,7 +2,9 @@
 
 [![Verification](https://github.com/ishhaaab/maintenance-workflow-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/ishhaaab/maintenance-workflow-engine/actions/workflows/ci.yml)
 
-A Python backend for approval-gated maintenance requests. Submit a request, review the plan, and approve it before the worker creates a ticket or reserves a part. Both integrations are local simulators.
+A Python backend for approval-gated maintenance requests. Both integrations are local simulators.
+
+Phase 1 is intentionally incomplete. PostgreSQL is now the only runtime execution authority. Standalone admission and direct approval return 410; workflow reads and cancellation return 401 until identity and review are implemented. Legacy API keys and cookies grant no access. The interactive demo and HTTP load command are temporarily unavailable and exit nonzero before sending requests. Isolated executor tests still prepare exact-plan approvals through test-only owner fixtures, never a product switch.
 
 The main problem this project tackles is recovery. If a worker crashes after sending a request, did the ticket get created? The engine records each attempt and looks up uncertain results by their original idempotency key before deciding whether to retry.
 
@@ -18,71 +20,57 @@ The planner can use a local LLM, but it cannot create tickets or reserve stock. 
 
 This is a maintenance-administration portfolio project, not an equipment control system. It does not actuate equipment, certify repairs, or make safety decisions.
 
-## Run locally
+## Fresh PostgreSQL deployment
 
-You'll need Python 3.12, [uv](https://docs.astral.sh/uv/), and Docker with Compose v2.
-
-```sh
-git clone https://github.com/ishhaaab/maintenance-workflow-engine.git
-cd maintenance-workflow-engine
-uv sync --frozen --extra dev
-cp .env.example .env
-# Replace both example API keys in .env with different randomly generated keys.
-docker compose config --quiet
-docker compose up --build -d --wait
-```
-
-In PowerShell, use `Copy-Item .env.example .env` to copy the file.
-
-The default configuration uses a fixture planner. You can run the demo without downloading a model or paying for an API. To use a local model instead, see the [evaluation instructions](docs/evaluation.md).
-
-All exposed ports bind to `127.0.0.1`.
-
-- API documentation: <http://127.0.0.1:8000/docs>
-- MongoDB: `mongodb://127.0.0.1:28017`
-- Redis: `redis://127.0.0.1:26379/0`
-- Ticket and inventory simulators: ports 8001 and 8002
-
-### Try a request
-
-Set the `WORKFLOW_DEMO_API_KEY` environment variable to the key mapped to `tenant-a` in your `.env`, then run:
+The default documented deployment is `compose.postgres.yaml`, with its own PostgreSQL, Redis, two workers and durable simulator volumes. It does not extend or start the historical stack. First-time setup is explicit:
 
 ```sh
-uv run python scripts/demo.py
+docker compose -f compose.postgres.yaml -p maintenance-workflow-engine-postgres build
+docker compose -f compose.postgres.yaml -p maintenance-workflow-engine-postgres run --rm --no-deps prepare admin
+docker compose -f compose.postgres.yaml -p maintenance-workflow-engine-postgres up -d --wait postgres redis
+docker compose -f compose.postgres.yaml -p maintenance-workflow-engine-postgres run --rm --no-deps prepare roles
+docker compose -f compose.postgres.yaml -p maintenance-workflow-engine-postgres run --rm --no-deps migrate
+docker compose -f compose.postgres.yaml -p maintenance-workflow-engine-postgres up -d --wait
 ```
 
-The script submits this request:
+Health is at `http://127.0.0.1:18000/health/ready`. This is still a health-only release, not a working human approval demo. Preparation generates private administrator, migration-owner and runtime credentials in separate volumes. Application containers receive only the runtime URL file. Normal `up`/restart does not provision or migrate. Repeated explicit preparation validates and reuses the same allocation. Missing/partial/mismatched identity fails closed, never silently creating another database. See the [runbook](docs/runbook.md) before changing a project name, restoring volumes or recovering an interrupted preparation.
 
-> Create an inspection ticket for pump P-17 and reserve one seal kit if available.
+## Native runtime
 
-It prints the validated plan and its hash, then stops at `AWAITING_APPROVAL`. No ticket or reservation is created.
+Use Python 3.12 and [uv](https://docs.astral.sh/uv/). Run `uv sync --frozen --extra dev` first. A separately provisioned PostgreSQL database must already be explicitly migrated to the current Alembic head. Supply only its non-owner runtime credentials through exactly one process setting:
 
-To submit a new demo request and approve its plan:
+- `WORKFLOW_DATABASE_URL`, a secret PostgreSQL URL; or
+- `WORKFLOW_DATABASE_URL_FILE`, a bounded UTF-8 file containing that one raw runtime URL, with an optional final newline. Allocation JSON or owner/admin configuration is not accepted.
+
+Do not pass migration credentials to the API or worker. `workflow-engine init` verifies the schema only, without migrations, Redis, planner or effect clients. Planner-only tools and `--help` need no database.
 
 ```sh
-uv run python scripts/demo.py --approve
+uv run workflow-engine init
+uv run workflow-engine api
 ```
 
-The API supports a [limited request grammar](docs/request-format.md), not arbitrary maintenance instructions. Unsupported or ambiguous requests end at `NEEDS_INPUT`. To clarify a request, submit a new one.
+Health is public at `/health/live` and `/health/ready`. The API defaults to `127.0.0.1:8000`. Use `workflow-engine` or `python -m workflow_engine.cli` on native Windows; these entrypoints select the event loop required by Psycopg, including the Uvicorn server. See the [runbook](docs/runbook.md) for worker and dispatcher settings.
+
+`compose.yaml` and its MongoDB/simulator volumes remain the historical deployment definition. They have not been repointed or migrated. Do not run that definition with the new runtime expecting MongoDB fallback. The new stack uses distinct volumes, images, stream/group names and loopback ports. No import, live cutover, automatic rollback or ledger reset is provided.
 
 ## API
 
-Workflow routes require `X-API-Key`. The configured key determines the tenant, not the request body or model output.
+No workflow route accepts legacy key or invented cookie authentication in Phase 1. Bodies above 16 KiB are still rejected with 413 before routing.
 
 | Route | Purpose |
 | --- | --- |
-| `POST /workflows` | Save `{ "text": "..." }`. Requires `Idempotency-Key`. Returns 202 for a new request, 200 for a replay, or 409 if the same key has a different payload. |
-| `GET /workflows/{id}` | Tenant-scoped state, revision, plan, approvals and action results. Foreign IDs return 404. |
-| `POST /workflows/{id}/approve` | Approve with `{ "expected_revision": 2, "plan_hash": "..." }`. Repeating approval for the same approved hash returns 200. |
-| `POST /workflows/{id}/cancel` | `{ "expected_revision": 2 }`. Active leases and uncertain/in-flight actions return 409. |
+| `POST /workflows` | 410. Standalone admission retired. |
+| `GET /workflows/{id}` | 401. Identity/review required. |
+| `POST /workflows/{id}/approve` | 410. Direct approval retired. |
+| `POST /workflows/{id}/cancel` | 401. Identity/review required. |
 | `GET /health/live` | Process liveness. |
-| `GET /health/ready` | Mongo failure returns 503; Redis failure returns 200 with explicit degraded status. |
+| `GET /health/ready` | Connection/schema failure returns 503. Redis failure returns 200 degraded with `postgres=true, broker=false`. |
 
 Cancellation does not undo a confirmed ticket. If stock is unavailable, the reservation is recorded as `SKIPPED`. If the engine cannot resolve an uncertain action, the workflow ends at `NEEDS_REVIEW` and retains any confirmed results.
 
 ## How recovery works
 
-MongoDB stores workflow state, approvals, action attempts and scheduling information. Redis Streams notify workers that work is due. If Redis loses a notification, the dispatcher can publish it again from MongoDB.
+PostgreSQL stores workflow state, approvals, action attempts, scheduling information and transaction-local audit. Redis Streams notify workers that work is due. If Redis loses a notification, the dispatcher can publish it again from PostgreSQL. Generic admission accepts unapproved planning work only; generic worker and unleased saves cannot mint approval.
 
 Workers claim time-limited leases. Revision and lease checks prevent a stale worker from overwriting newer state. Those checks do not stop a downstream service from completing an earlier request, so the ticket and inventory simulators also keep durable SQLite idempotency records.
 
@@ -98,17 +86,20 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-For integration tests, set `TEST_MONGO_URL` and `TEST_REDIS_URL` to isolated MongoDB and Redis services, then run:
+For current integration evidence, set secret `TEST_POSTGRES_URL` and `TEST_REDIS_URL` values for isolated services, then run:
 
 ```sh
-uv run pytest tests/integration tests/e2e/test_workflow.py -q
+uv run --no-sync pytest tests/integration tests/e2e/test_workflow.py --ignore=tests/integration/test_fault_matrix.py -q
+uv run --no-sync python scripts/benchmark_faults.py --output-dir artifacts/postgres-<unique-run-id> --seeds 0,1,2,3,4,5,6,7,8,9
 ```
 
-Tests create unique `workflow_test_*` databases, Redis streams and temporary SQLite files. Service-dependent tests skip when their URLs are unset and fail if a supplied service is broken.
+PostgreSQL tests allocate unique databases and distinct owner/runtime roles, run explicit test migrations, exercise runtime grants, and remove only their registered resources. Redis streams, simulator files and child PIDs are test-owned. Missing service settings cause visible skips; a supplied broken service fails. The process/fault matrix now uses PostgreSQL, Redis and separate HTTP simulators, including committed-effect crashes, Redis loss, late expired workers and database outages. It preserves all 20 scenarios and validates 200 records across ten seeds. Historical MongoDB reports remain separate evidence.
 
-The Compose test requires `RUN_COMPOSE=1` and starts a randomly named disposable project. Read the [runbook](docs/runbook.md) before running it alongside an existing deployment. GitHub Actions runs the Linux integration and Compose checks.
+`RUN_COMPOSE=1 uv run --no-sync python -m pytest -p tests.required_checks tests/e2e/test_compose.py --fail-on-skip -q` creates a new random project with dynamically assigned loopback ports. It checks preparation, migrations, grants, worker death, Redis loss and durable recreation, then removes only that project's label-verified volumes. No existing deployment must be stopped. CI requires the PostgreSQL integration, full fault matrix and fresh Compose jobs; required jobs fail on skips. Existing Ruff gates remain enforced. Remote execution of the current changes is not claimed.
 
 ## Measured results
+
+The workflow fault/load/admission results below describe the historical MongoDB/API-key release. They are retained unchanged, not new PostgreSQL throughput claims.
 
 - [Fault tests](reports/faults.md) matched all 200 expected outcomes. That includes 20 cases expected to need review, not 200 automatic completions.
 - [Load tests](reports/load.md) completed 300 fixture-planned workflows with 600 confirmed effects and zero errors across client concurrency levels of 1, 5 and 20. These tests used simulators, not a live model.
@@ -123,11 +114,12 @@ The [verification record](docs/verification.md) links the CI runs and records cl
 
 ## Code and design
 
-The stack is Python 3.12, FastAPI, Pydantic 2, asynchronous PyMongo, Redis Streams, HTTPX and SQLite. Dependencies and container images are pinned. The main modules are under [`src/workflow_engine/`](src/workflow_engine/).
+The runtime stack is Python 3.12, FastAPI, Pydantic 2, SQLAlchemy/Psycopg PostgreSQL, Redis Streams, HTTPX and simulator-only SQLite. PyMongo remains for the historical adapter. The main modules are under [`src/workflow_engine/`](src/workflow_engine/).
 
 - `domain.py` defines workflow records and legal state transitions.
 - `policy.py` checks tenant access and request intent without trusting the model.
-- `store.py` implements conditional MongoDB writes and an in-memory test implementation.
+- `postgres_store.py` implements fenced PostgreSQL writes and atomic audit. `db.py` checks schema and owns short-session lifecycle.
+- `store.py` defines shared rules, an in-memory rule fake and the historical MongoDB implementation.
 - `runner.py` coordinates execution, leases, retries and uncertain outcomes.
 - `gateways.py` classifies responses from external services.
 - [`src/external_simulators/`](src/external_simulators/) contains the ticket and inventory services and their SQLite ledgers.

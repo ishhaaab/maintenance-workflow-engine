@@ -17,3 +17,8 @@ artifacts/
 dist/
 *.egg-info/
 scratch/
+
+# Local interview preparation, unrelated to the application.
+/INTERVIEW_CARDS_WORKFLOW_ENGINE.html
+/INTERVIEW_PREP_WORKFLOW_ENGINE.md
+/INTERVIEW_VISUAL_WORKFLOW_ENGINE.html

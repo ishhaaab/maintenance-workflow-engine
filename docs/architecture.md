@@ -4,21 +4,27 @@
 
 The runner has one public operation, `tick(workflow_id, worker_id)`. It claims eligible work, performs one phase with at most one external mutation, saves the result under its lease, then releases that lease. API handlers do not duplicate the state machine. The broker does not decide which action to execute.
 
-The domain returns new validated snapshots without I/O. The store checks revisions, current tokens and immutable fields, then updates selected document fields. This keeps heartbeat and enqueue changes from being overwritten by a worker's older snapshot.
+The domain returns new validated snapshots without I/O. The store checks revisions, current tokens and immutable fields, then updates selected fields. This keeps heartbeat and enqueue changes from being overwritten by a worker's older snapshot. Generic admission can create only unapproved planning work. General saves cannot introduce approval, including leased worker saves. Pure domain approval remains available for a future transaction-owned review bridge and isolated owner test fixtures, not an API/CLI command.
 
-The store interface has two implementations: a clock-injected memory fake for deterministic tests, and MongoDB for real concurrency and persistence. The planner interface has a fixture adapter and an OpenAI-compatible model adapter. Gateways are injected into the runner. These are actual interchangeable implementations rather than speculative plugin layers.
+PostgreSQL is the only default runtime store. Each operation opens a short independent session; tick and heartbeat never share one. A clock-injected memory fake proves domain rules, not PostgreSQL concurrency. The MongoDB adapter remains historical. The planner has fixture and OpenAI-compatible model adapters, and gateways are injected into the runner.
+
+Phase 1 HTTP exposes public health but closes standalone admission/direct approval with 410 and protected reads/cancellation with 401. There is no API-key fallback, cookie identity, legacy factory or approval fixture setting. Runtime construction accepts only a runtime PostgreSQL URL or bounded raw-URL file. Schema initialization verifies the migration head without DDL. CLI init does not construct executor clients.
 
 ## State ownership
 
+`compose.postgres.yaml` separates eight long-running services from explicit preparation/migration jobs. A private administrator volume holds the started journals and canonical allocation; only preparation and PostgreSQL mount it. The migration job mounts only the owner credential volume. API, dispatcher and both worker services mount only the runtime credential volume, read-only. Neither application startup nor ordinary Compose `up` runs DDL. The production image contains no tests or fixture approval command; the executor's privileged setup exists only in an explicitly selected test image/override.
+
+Preparation persists an exclusive started marker before fresh allocation, then fsyncs a canonical record before atomically publishing separate owner/runtime files. Repeated explicit preparation verifies the recorded database, role properties, credential identities and runtime binding. A missing consumer file can be republished from the same canonical identity; a mismatched file is not overwritten. An interrupted pre-canonical bootstrap remains a visible recovery condition. No prefix scan, existing-role repair, password rotation or deletion of a committed deployment is part of preparation.
+
 ```mermaid
 flowchart TD
-    Client -->|request and admission key| API[FastAPI]
-    API -->|atomic document update| Mongo[(MongoDB)]
-    Dispatcher -->|find due unleased documents| Mongo
+    Client -->|health only; workflow routes denied| API[FastAPI]
+    API -->|schema and connection readiness| PostgreSQL[(PostgreSQL)]
+    Dispatcher -->|find due unleased executions| PostgreSQL
     Dispatcher -->|workflow ID and sequence only| Redis[(Redis Streams)]
     Redis --> Worker
     Worker --> Runner
-    Runner -->|revision and lease-fenced writes| Mongo
+    Runner -->|revision and lease-fenced writes plus audit| PostgreSQL
     Runner -->|read-only proposal| Planner
     Planner --> Policy[Deterministic tenant policy]
     Runner -->|approved stable-key action| Ticket[Ticket simulator]
@@ -27,16 +33,16 @@ flowchart TD
     Inventory --> InventoryDB[(Inventory SQLite ledger and stock)]
 ```
 
-Each workflow contains its request, plan, approval, action identities, bounded attempt counts, due intent, lease and at most 256 history entries. The serialized document budget is 256 KiB. There is no separate outbox collection or cross-store transaction.
+Each execution contains its request, plan, approval, action identities, bounded attempt counts, due intent, lease and at most 256 history entries. The full serialized snapshot budget is 256 KiB. Column-backed fields and one JSONB payload form one authoritative execution record. Semantic changes append audit within the same transaction; audit is not trimmed with operational history. There is no cross-store transaction.
 
 ## Concurrency
 
-- MongoDB server time controls leases and retry eligibility.
+- PostgreSQL server time controls leases and retry eligibility.
 - Semantic changes increment revision. Lease renewal and dispatch markers do not.
 - Lease duration is 30 seconds; heartbeats run every 5 seconds.
 - The dispatcher scans once a second and republishes each eligible workflow no more than once per 5 seconds.
-- Redis abandoned pending entries are reclaimed after 60 seconds. MongoDB redispatch independently covers Redis loss.
-- API commands fail on conflicting revisions or live leases. Same-hash approval replay is idempotent even with an earlier revision.
+- Redis abandoned pending entries are reclaimed after 60 seconds. PostgreSQL redispatch independently covers Redis loss. Fresh default names are `workflow-pg-wakeups-v1` and `workflow-pg-workers-v1`.
+- Internal saves reject conflicting revisions and live foreign leases. Public workflow commands remain denied pending identity and review.
 
 An expired worker may still be executing at a downstream system. Its token prevents stale local writes. Only the downstream same-key contract prevents duplicate external effects. These guarantees solve different problems.
 
