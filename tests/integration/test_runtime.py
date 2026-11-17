@@ -67,6 +67,8 @@ async def test_runtime_prepared_executor_recovers_with_real_postgres_redis_and_h
     monkeypatch.setattr(runtime, "create_database", database)
     with PostgresTests.from_environment() as postgres:
         allocation = postgres.allocate(migrate=True)
+        with allocation.connect_runtime() as connection:
+            connection.execute("INSERT INTO tenants (id, slug) VALUES ('tenant-a', 'tenant-a')")
         with (
             simulator_process("ticketing", tmp_path / "ticket") as (ticket_url, _),
             simulator_process("inventory", tmp_path / "inventory") as (inventory_url, _),
@@ -232,6 +234,8 @@ async def test_actual_postgres_connection_failure_is_safe_503(monkeypatch, caplo
     with socket.socket() as port:
         port.bind(("127.0.0.1", 0))
         settings = Settings(
+            env="local",
+            origin="http://127.0.0.1:8000",
             database_url=SecretStr(
                 f"postgresql://private-runtime:private-password@127.0.0.1:{port.getsockname()[1]}/unavailable"
             ),
@@ -259,6 +263,8 @@ async def test_actual_redis_connection_failure_is_degraded_200(monkeypatch, capl
         allocation = postgres.allocate(migrate=True)
         port.bind(("127.0.0.1", 0))
         settings = Settings(
+            env="local",
+            origin="http://127.0.0.1:8000",
             database_url=allocation.runtime_url,
             redis_url=SecretStr(
                 f"redis://private-user:private-password@127.0.0.1:{port.getsockname()[1]}/0"
@@ -285,6 +291,9 @@ def test_native_cli_api_uses_runtime_only_url_file_and_selector(tmp_path):
         del environment["WORKFLOW_DATABASE_URL"]
         environment["WORKFLOW_DATABASE_URL_FILE"] = str(url_file)
         environment["WORKFLOW_REDIS_URL"] = redis_url().get_secret_value()
+        environment["WORKFLOW_ENV"] = "local"
+        environment["WORKFLOW_ORIGIN"] = "http://127.0.0.1:8000"
+        environment["WORKFLOW_CATALOG_PATH"] = "fixtures/catalog.jsonl"
         port = free_port()
         with (tmp_path / "native-api.log").open("w+", encoding="utf-8") as log:
             process = subprocess.Popen(
@@ -326,7 +335,12 @@ def test_native_cli_api_uses_runtime_only_url_file_and_selector(tmp_path):
 async def test_runtime_api_readiness_and_lifespan_use_only_runtime_credentials(monkeypatch):
     with PostgresTests.from_environment() as postgres:
         allocation = postgres.allocate(migrate=True)
-        settings = Settings(database_url=allocation.runtime_url, redis_url=redis_url())
+        settings = Settings(
+            database_url=allocation.runtime_url,
+            redis_url=redis_url(),
+            env="local",
+            origin="http://127.0.0.1:8000",
+        )
         monkeypatch.setattr(runtime, "Settings", lambda: settings)
         app = runtime.api_application()
         async with app.router.lifespan_context(app), AsyncExitStack() as stack:

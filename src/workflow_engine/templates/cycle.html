@@ -1,0 +1,30 @@
+{% extends 'base.html' %}{% from 'forms.html' import token, revision, status %}
+{% block content %}<a class="back" href="/cycles">All cycles</a><div class="page-heading"><div>{{ status(cycle.state) }}<h1>{{ cycle.title }}</h1><p class="muted">Review completion is separate from execution success.</p></div><span class="mono muted">Revision {{ cycle.revision }}</span></div>
+{% if actor.role == 'ADMIN' and cycle.state == 'DRAFT' %}<div class="two-column section"><section><h2>Draft setup</h2><form method="post" action="/cycles/{{ cycle.id }}/edit" class="stack">{{ token(csrf) }}{{ revision(cycle.revision) }}<div><label for="title">Cycle title</label><input id="title" name="title" value="{{ cycle.title }}" required maxlength="160"></div><button class="secondary">Save title</button></form></section>
+<section><h2>Admit requester</h2><form method="post" action="/cycles/{{ cycle.id }}/requesters" class="stack">{{ token(csrf) }}{{ revision(cycle.revision) }}<div><label for="requester">Requester account</label><select id="requester" name="requester_id" required><option value="">Choose a requester</option>{% for member in members if member.role == 'REQUESTER' and member.enabled and member.id not in cycle.requesters %}<option value="{{ member.id }}">{{ member.login }}</option>{% endfor %}</select></div><button>Admit requester</button><p class="help">Requesters create their own items. Administrators do not submit on their behalf.</p></form></section></div>{% endif %}
+<section class="section"><div class="section-heading"><h2>Items</h2>{% if actor.role == 'REQUESTER' and cycle.state == 'DRAFT' %}<form method="post" action="/cycles/{{ cycle.id }}/items">{{ token(csrf) }}{{ revision(cycle.revision) }}<input type="hidden" name="command_id" value="{{ command_id }}"><button>Create item</button></form>{% endif %}</div>
+{% if cycle['items'] %}
+<div class="table-wrap"><table><caption class="sr-only">Maintenance items in this cycle</caption>
+<thead><tr><th>Item / requester</th><th>Review</th><th>Next action</th><th>Execution</th></tr></thead><tbody>
+{% for item in cycle['items'] %}
+<tr><td><a href="/items/{{ item.id }}">Item {{ item.id[:8] }}</a><small>{{ item.requester_login }}</small></td>
+<td>{{ status(item.progress.status if item.progress else none) }}</td>
+<td>{% if item.next_reviewer %}{{ item.next_reviewer }}<small>{{ item.progress.deadline_at | utc }}{% if item.progress.deadline_at < clock %} <span class="overdue">Overdue</span>{% endif %}</small>
+{% elif not item.chain %}Admin: configure chain
+{% elif not item.current_version_id %}Requester: submit version
+{% elif item.progress.status in ['NEEDS_INPUT','PLAN_FAILED','CHANGES_REQUESTED'] %}Requester: submit a new version
+{% elif item.progress.status == 'PREPARING' %}Planner is preparing the version
+{% elif cycle.state == 'DRAFT' %}Admin: activate when every item is ready
+{% else %}No further review action{% endif %}</td>
+<td>{{ item.execution.state | label if item.execution else 'Not started' }}</td></tr>
+{% endfor %}</tbody></table></div>
+{% else %}<div class="empty"><p>No items yet. Admit a requester and ask them to create an item.</p></div>{% endif %}
+{% if cycle.next_offset != none %}<a class="pagination" href="?offset={{ cycle.next_offset }}">Next page</a>{% endif %}</section>
+{% if actor.role == 'ADMIN' and cycle.state == 'DRAFT' %}<section class="section"><h2>Activate review</h2><p>Every item needs a validated plan and a complete chain. Activation freezes membership and approval configuration.</p><form method="post" action="/cycles/{{ cycle.id }}/activate">{{ token(csrf) }}{{ revision(cycle.revision) }}<button>Activate cycle</button></form></section>{% elif cycle.state == 'COMPLETED' %}<div class="notice">All items have a final review outcome. Approved execution may still be running or require attention.</div>{% endif %}
+{% if actor.role == 'ADMIN' %}
+<section class="section"><h2>Cycle reports</h2>
+<p>Download all versions, assignments and decisions, with execution outcomes reported separately. Reports are limited to 10,000 item/version records and 8 MiB of report data; larger reports fail rather than truncate.</p>
+<div class="actions"><a class="button" href="/cycles/{{ cycle.id }}/export.csv">Download CSV</a><a class="button" href="/cycles/{{ cycle.id }}/export.pdf">Download PDF</a></div>
+<p class="help">CSV cells that could be interpreted as spreadsheet formulas are prefixed with an apostrophe. PDF supports the embedded Noto Sans character set; use CSV for other scripts.</p>
+</section>{% endif %}
+{% endblock %}

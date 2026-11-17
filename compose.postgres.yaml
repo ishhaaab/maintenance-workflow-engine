@@ -23,6 +23,10 @@ x-runtime: &runtime
     WORKFLOW_TICKETING_URL: http://ticketing:8001
     WORKFLOW_INVENTORY_URL: http://inventory:8002
     WORKFLOW_PLANNER: fixture
+    WORKFLOW_ENV: ${WORKFLOW_PG_ENV:-local}
+    WORKFLOW_ORIGIN: ${WORKFLOW_PG_ORIGIN:-http://127.0.0.1:18000}
+    WORKFLOW_SMTP_HOST: mailpit
+    WORKFLOW_SMTP_PORT: 1025
   volumes:
     - type: volume
       source: pg-runtime-v1
@@ -128,6 +132,23 @@ services:
   worker-b:
     <<: *runtime
     command: [worker, --worker-id, postgres-worker-b]
+  notifications:
+    <<: *runtime
+    command: [notifications, --worker-id, postgres-notifications]
+    depends_on:
+      postgres: {condition: service_healthy}
+      mailpit: {condition: service_healthy}
+  mailpit:
+    image: axllent/mailpit:v1.33.1@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
+    ports:
+      - "127.0.0.1:${WORKFLOW_PG_SMTP_PORT:-11025}:1025"
+      - "127.0.0.1:${WORKFLOW_PG_MAILPIT_PORT:-18025}:8025"
+    healthcheck:
+      test: [CMD, /mailpit, readyz]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
   prepare:
     <<: *image
     profiles: [operations]

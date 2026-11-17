@@ -1,0 +1,7 @@
+{% extends 'base.html' %}{% from 'forms.html' import token %}
+{% block content %}<div class="login-layout"><section><p class="eyebrow">Maintenance operations</p><h1>Review the plan.<br>Then let it run.</h1><p class="lede">Named approvals for maintenance requests, with a history of every decision.</p><p class="muted">Your administrator provides your tenant and login. There is no public signup.</p></section>
+<section class="surface"><h2>Sign in</h2><form method="post" action="/login" class="stack">{{ token(csrf) }}
+<div><label for="tenant">Tenant</label><input id="tenant" name="tenant" autocomplete="organization" required maxlength="80" autofocus></div>
+<div><label for="login">Login</label><input id="login" name="login" autocomplete="username" required maxlength="100"></div>
+<div><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256"></div>
+<button type="submit">Sign in</button></form></section></div>{% endblock %}

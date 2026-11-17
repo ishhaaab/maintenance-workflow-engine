@@ -36,7 +36,10 @@ async def test_dependency_failure_reconnects_without_logging_error(monkeypatch, 
 
 def runtime_settings(**values):
     return Settings(
-        database_url=SecretStr("postgresql://runtime:private-password@host/db"), **values
+        database_url=SecretStr("postgresql://runtime:private-password@host/db"),
+        env="local",
+        origin="http://127.0.0.1:8000",
+        **values,
     )
 
 

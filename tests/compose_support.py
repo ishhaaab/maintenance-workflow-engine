@@ -31,7 +31,7 @@ class ComposeProject:
             + "\n"
             + "\n".join(
                 f"WORKFLOW_PG_{name}_PORT=0"
-                for name in ("API", "TICKET", "INVENTORY", "DB", "REDIS")
+                for name in ("API", "TICKET", "INVENTORY", "DB", "REDIS", "SMTP", "MAILPIT")
             )
             + "\n",
             encoding="utf-8",

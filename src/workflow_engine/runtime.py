@@ -36,11 +36,12 @@ def api_application():
     from .api import create_app
 
     settings = Settings()
+    settings.browser_security()
     database = create_database(settings.runtime_database_url())
     store = PostgresWorkflowStore(database)
     # Construct Redis inside the lifespan so failures still close the database.
     broker = _broker(settings, None)
-    app = create_app(settings, store, None, broker)
+    app = create_app(settings, store, CatalogProvider.from_file(settings.catalog_path), broker)
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -112,6 +113,26 @@ async def resources(settings=None):
 
 
 async def run_process(command, worker_id, workflow_id=None):
+    if command == "notifications":
+        from .notifications import NotificationWorker, SmtpSender
+
+        settings = Settings()
+        database = create_database(settings.runtime_database_url())
+        try:
+            await database.check_schema()
+            worker = NotificationWorker(database, SmtpSender(settings), settings.origin)
+            while True:
+                try:
+                    result = await worker.dispatch_once(worker_id)
+                    if result == "idle":
+                        await asyncio.sleep(1)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    log.warning("notification_dependency_unavailable")
+                    await asyncio.sleep(1)
+        finally:
+            await database.close()
     if command == "init":
         database = create_database(Settings().runtime_database_url())
         try:

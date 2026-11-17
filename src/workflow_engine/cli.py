@@ -16,7 +16,19 @@ def runtime_loop():
 def main():
     parser = argparse.ArgumentParser(description="Approval-gated maintenance workflow engine")
     parser.add_argument(
-        "command", choices=["api", "worker", "dispatcher", "init", "ticketing", "inventory", "tick"]
+        "command",
+        choices=[
+            "api",
+            "worker",
+            "dispatcher",
+            "notifications",
+            "init",
+            "ticketing",
+            "inventory",
+            "tick",
+            "bootstrap-admin",
+            "seed-demo",
+        ],
     )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int)
@@ -24,12 +36,54 @@ def main():
     parser.add_argument("--enable-faults", action="store_true")
     parser.add_argument("--worker-id", default=socket.gethostname() + "-" + str(os.getpid()))
     parser.add_argument("--workflow-id")
+    parser.add_argument("--tenant")
+    parser.add_argument("--login")
     args = parser.parse_args()
     from .telemetry import configure_logging
 
     configure_logging()
     if args.command == "tick" and not args.workflow_id:
         parser.error("tick requires --workflow-id")
+    if args.command == "bootstrap-admin":
+        if not args.tenant or not args.login:
+            parser.error("bootstrap-admin requires --tenant and --login")
+        from .bootstrap import bootstrap_admin
+        from .settings import Settings
+
+        print(
+            json.dumps(
+                asyncio.run(
+                    bootstrap_admin(Settings(), args.tenant, args.login), loop_factory=runtime_loop
+                )
+            )
+        )
+        return
+    if args.command == "seed-demo":
+        from .db import create_database
+        from .seed_demo import seed_demo
+        from .settings import Settings
+
+        async def seed():
+            settings = Settings()
+            database = create_database(settings.runtime_database_url())
+            try:
+                return await seed_demo(database, settings)
+            finally:
+                await database.close()
+
+        result = asyncio.run(seed(), loop_factory=runtime_loop)
+        result["credentials"] = [
+            {
+                "tenant": row.tenant,
+                "login": row.login,
+                "role": row.role,
+                "password": row.password.get_secret_value(),
+            }
+            for row in result["credentials"]
+        ]
+        # One-time operator output only. Passwords never enter the journal or logging.
+        print(json.dumps(result))
+        return
     if args.command in {"api", "ticketing", "inventory"}:
         import uvicorn
 

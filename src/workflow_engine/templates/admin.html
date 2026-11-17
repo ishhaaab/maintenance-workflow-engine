@@ -1,0 +1,15 @@
+{% extends 'base.html' %}{% from 'forms.html' import token %}
+{% block content %}
+<h1>Accounts</h1><p class="muted">Tenant-local requester and reviewer accounts. Administrator provisioning is operator-only.</p>
+<div class="two-column section"><section class="narrow"><h2>Create account</h2>
+<form method="post" action="/admin/accounts" class="stack">{{ token(csrf) }}
+<div><label for="login">Login</label><input id="login" name="login" autocomplete="off" required minlength="3" maxlength="100"></div>
+<div><label for="role">Role</label><select id="role" name="role"><option value="REQUESTER">Requester</option><option value="REVIEWER">Reviewer</option></select></div>
+<div><label for="password">Initial password</label><input id="password" name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="256"><p class="help">12–256 characters. Share privately with the named user.</p></div>
+<button>Create account</button></form></section>
+<section><h2>Tenant members</h2><p class="help">Disabling an active assignee blocks their review and revokes their sessions. It does not change the frozen assignment.</p>
+<div class="table-wrap"><table><thead><tr><th>Login</th><th>Role</th><th>Status</th></tr></thead><tbody>
+{% for member in members %}<tr><td>{{ member.login }}</td><td>{{ member.role | label }}</td><td>{{ 'Enabled' if member.enabled else 'Disabled' }}
+{% if member.role != 'ADMIN' %}<form method="post" action="/admin/accounts/{{ member.id }}/enabled">{{ token(csrf) }}<input type="hidden" name="enabled" value="{{ 'false' if member.enabled else 'true' }}"><button class="quiet">{{ 'Disable' if member.enabled else 'Enable' }}</button></form>{% endif %}
+</td></tr>{% endfor %}</tbody></table></div></section></div>
+{% endblock %}

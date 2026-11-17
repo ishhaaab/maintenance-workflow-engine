@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} · Maintenance reviews</title><link rel="stylesheet" href="/static/app.css"></head>
+<body><a class="skip" href="#main">Skip to content</a>
+<header class="appbar"><a class="brand" href="/cycles"><span class="mark" aria-hidden="true">M</span> Maintenance <span class="muted">/ Reviews</span></a>
+{% if actor %}<nav aria-label="Main navigation"><a href="/cycles">Cycles</a>{% if actor.role == 'REVIEWER' %}<a href="/pending">My pending reviews</a>{% endif %}{% if actor.role == 'ADMIN' %}<a href="/admin">Accounts</a><a href="/audit">Activity</a>{% endif %}</nav>
+<div class="identity"><span>{{ profile.login }} <small>{{ profile.tenant }} · {{ actor.role | label }}</small></span><form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="quiet">Sign out</button></form></div>{% endif %}</header>
+<main id="main" tabindex="-1">{% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}{% block content %}{% endblock %}</main>
+<footer>Maintenance review workspace <span>All deadlines and timestamps are UTC.</span></footer></body></html>

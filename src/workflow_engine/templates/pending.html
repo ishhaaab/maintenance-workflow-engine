@@ -1,0 +1,9 @@
+{% extends 'base.html' %}{% from 'forms.html' import status %}
+{% block content %}
+<h1>My pending reviews</h1><p class="muted">Only the current step of the current version appears here.</p>
+<div class="review-list">{% for item in result['items'] %}
+<article><div><p class="muted">{{ item.cycle_title }}</p><h2><a href="/items/{{ item.id }}">Item {{ item.id[:8] }}</a></h2><p>{{ item.requester_login }} · Level {{ item.progress.current_level }}</p></div>
+<div>{{ status(item.progress.status) }}<p class="{% if item.progress.deadline_at < clock %}overdue{% endif %}">{{ item.progress.deadline_at | utc }}{% if item.progress.deadline_at < clock %} · Overdue{% endif %}</p><a href="/items/{{ item.id }}">Review item</a></div></article>
+{% else %}<div class="empty"><h2>No pending reviews</h2><p>Nothing is waiting for your decision. Earlier levels may still be in progress.</p></div>{% endfor %}</div>
+{% if result.next_offset != none %}<a class="pagination" href="?offset={{ result.next_offset }}">Next page</a>{% endif %}
+{% endblock %}

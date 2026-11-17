@@ -28,8 +28,10 @@ def test_isolated_compose_clean_start_and_restart(tmp_path):
             "migrate",
             "ticketing",
             "inventory",
+            "notifications",
+            "mailpit",
         } <= services.keys()
-        for name in ("api", "worker-a", "worker-b", "dispatcher"):
+        for name in ("api", "worker-a", "worker-b", "dispatcher", "notifications"):
             service = services[name]
             assert (
                 service["environment"]["WORKFLOW_DATABASE_URL_FILE"]
@@ -156,7 +158,7 @@ def test_isolated_compose_clean_start_and_restart(tmp_path):
         logs = project.run("logs", "--no-color", "postgres").stdout
         assert "synthetic-row-detail-sentinel" not in logs
         assert "synthetic-password-sentinel" not in logs
-        for name in ("api", "worker-a", "worker-b", "dispatcher"):
+        for name in ("api", "worker-a", "worker-b", "dispatcher", "notifications"):
             project.run(
                 "exec",
                 "-T",
