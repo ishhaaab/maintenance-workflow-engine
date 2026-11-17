@@ -1,4 +1,6 @@
 from pathlib import Path
+from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -27,10 +29,55 @@ class Settings(BaseSettings):
     model_name: str = "Qwen/Qwen2.5-7B-Instruct"
     model_revision: str = "unrecorded"
     model_key: SecretStr = SecretStr("")
+    env: Literal["production", "local"] = "production"
+    origin: str | None = None
+    allow_demo_seed: bool = False
+    smtp_host: str = "127.0.0.1"
+    smtp_port: int = Field(default=1025, ge=1, le=65535)
+    smtp_starttls: bool = False
+    smtp_username: str | None = Field(default=None, repr=False)
+    smtp_password: SecretStr = SecretStr("")
     lease_s: int = Field(default=30, ge=10, le=300)
     heartbeat_s: int = Field(default=5, ge=1, le=5)
     external_timeout_s: int = Field(default=10, ge=1, le=10)
     planner_timeout_s: int = Field(default=15, ge=1, le=15)
+
+    def browser_security(self) -> tuple[str, bool]:
+        try:
+            parsed = urlsplit(self.origin or "")
+            if (
+                not parsed.hostname
+                or parsed.username
+                or parsed.password
+                or parsed.query
+                or parsed.fragment
+                or parsed.path not in {"", "/"}
+            ):
+                raise ValueError
+            if self.env == "local":
+                if (
+                    parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
+                    or parsed.scheme != "http"
+                ):
+                    raise ValueError
+                return "workflow_local_session", False
+            if parsed.scheme != "https":
+                raise ValueError
+            return "__Host-workflow_session", True
+        except ValueError:
+            raise ValueError(
+                "Configure HTTPS WORKFLOW_ORIGIN or explicit loopback-only local mode"
+            ) from None
+
+    def notification_security(self):
+        self.browser_security()
+        if self.env == "local":
+            if self.smtp_host not in {"127.0.0.1", "localhost", "::1", "mailpit"}:
+                raise ValueError("Local demo mail must stay inside the local capture inbox")
+        elif not (
+            self.smtp_starttls and self.smtp_username and self.smtp_password.get_secret_value()
+        ):
+            raise ValueError("Production SMTP requires explicit authenticated TLS")
 
     def runtime_database_url(self) -> SecretStr:
         """Resolve only runtime credentials, lazily so planner tools and --help stay offline."""
