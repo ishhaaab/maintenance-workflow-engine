@@ -40,6 +40,27 @@ class Base(DeclarativeBase):
 class ExecutionRun(Base):
     __tablename__ = "execution_runs"
     __table_args__ = (
+        UniqueConstraint("tenant_id", "item_version_id", name="uq_execution_version"),
+        UniqueConstraint(
+            "tenant_id", "item_version_id", "workflow_id", name="uq_execution_review_identity"
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "item_version_id"],
+            ["item_versions.tenant_id", "item_versions.id"],
+            name="fk_execution_version",
+            use_alter=True,
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "item_version_id", "approved_plan_id"],
+            ["validated_plans.tenant_id", "validated_plans.version_id", "validated_plans.id"],
+            name="fk_execution_plan",
+            use_alter=True,
+        ),
+        CheckConstraint(
+            "item_version_id IS NULL OR approved_plan_hash IS NULL OR approved_plan_id IS NOT NULL",
+            name="ck_execution_review_approval",
+        ),
+        ForeignKeyConstraint(["tenant_id"], ["tenants.id"], name="fk_execution_tenant"),
         UniqueConstraint("tenant_id", "workflow_id", name="uq_execution_tenant_workflow"),
         UniqueConstraint("tenant_id", "admission_key", name="uq_execution_tenant_admission"),
         CheckConstraint(
@@ -107,6 +128,8 @@ class ExecutionRun(Base):
     plan_hash: Mapped[str | None] = mapped_column(String(64))
     approved_plan_hash: Mapped[str | None] = mapped_column(String(64))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    item_version_id: Mapped[UUID | None] = mapped_column(Uuid)
+    approved_plan_id: Mapped[UUID | None] = mapped_column(Uuid)
     payload: Mapped[dict] = mapped_column(JSONB)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     wake_seq: Mapped[int] = mapped_column(BigInteger)
@@ -119,6 +142,12 @@ class ExecutionRun(Base):
 class AuditRecord(Base):
     __tablename__ = "audit_records"
     __table_args__ = (
+        ForeignKeyConstraint(["tenant_id"], ["tenants.id"], name="fk_audit_tenant"),
+        ForeignKeyConstraint(
+            ["tenant_id", "actor_membership_id"],
+            ["tenant_memberships.tenant_id", "tenant_memberships.id"],
+            name="fk_audit_membership",
+        ),
         ForeignKeyConstraint(
             ["tenant_id", "workflow_id"],
             ["execution_runs.tenant_id", "execution_runs.workflow_id"],
@@ -135,11 +164,20 @@ class AuditRecord(Base):
         ),
         CheckConstraint("octet_length(safe_metadata::text) <= 4096", name="ck_audit_budget"),
         Index("ix_audit_tenant_workflow_time", "tenant_id", "workflow_id", "occurred_at"),
+        Index("ix_audit_entity_time", "tenant_id", "entity_id", "occurred_at", "audit_id"),
+        CheckConstraint("actor_type IN ('USER', 'SYSTEM', 'OPERATOR')", name="ck_audit_actor_type"),
     )
 
     audit_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(128))
-    workflow_id: Mapped[UUID] = mapped_column(Uuid)
+    workflow_id: Mapped[UUID | None] = mapped_column(Uuid)
+    actor_type: Mapped[str] = mapped_column(String(16), server_default="SYSTEM")
+    actor_membership_id: Mapped[UUID | None] = mapped_column(Uuid)
+    entity_type: Mapped[str] = mapped_column(String(32), server_default="execution")
+    entity_id: Mapped[UUID | None] = mapped_column(Uuid)
+    before_revision: Mapped[int | None] = mapped_column(BigInteger)
+    before_state: Mapped[str | None] = mapped_column(String(32))
+    after_state: Mapped[str | None] = mapped_column(String(32))
     actor: Mapped[str] = mapped_column(String(128))
     event: Mapped[str] = mapped_column(String(64))
     correlation_id: Mapped[str] = mapped_column(String(128))

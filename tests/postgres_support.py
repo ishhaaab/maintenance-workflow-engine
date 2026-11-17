@@ -175,6 +175,14 @@ async def runtime_store(postgres):
         from workflow_engine.postgres_store import PostgresWorkflowStore
 
         store = PostgresWorkflowStore(database)
+        async with database.sessions.begin() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO tenants (id, slug) VALUES "
+                    "('tenant-a', 'tenant-a'), ('tenant-b', 'tenant-b'), "
+                    "('tenant-c', 'tenant-c'), ('tenant-d', 'tenant-d'), ('a', 'a'), ('b', 'b')"
+                )
+            )
         register_fixture_store(postgres, allocation, store)
         await store.initialize()
         yield store
@@ -296,6 +304,9 @@ async def seed_approved_run(store, workflow, expected_revision, plan_hash):
                     .with_for_update()
                 )
             ).scalar_one()
+            from tests.review_fixtures import attach_approved_review
+
+            await attach_approved_review(session, row, _decode(row))
             result = approved(_decode(row))
             for key, value in _encode(result).items():
                 setattr(row, key, value)

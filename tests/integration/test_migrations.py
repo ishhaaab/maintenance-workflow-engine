@@ -68,6 +68,12 @@ def execution_row(**changes):
 
 
 def insert_execution(connection, row):
+    # Explicit fixture identities, never a production store backfill from arbitrary runs.
+    if connection.execute("SELECT to_regclass('tenants')").fetchone()[0] is not None:
+        connection.execute(
+            "INSERT INTO tenants (id, slug) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING",
+            (row["tenant_id"], row["tenant_id"]),
+        )
     values = {**row, "payload": Jsonb(row["payload"])}
     connection.execute(
         sql.SQL("INSERT INTO execution_runs ({}) VALUES ({})").format(
@@ -103,7 +109,7 @@ async def test_empty_database_upgrade_and_schema_check(postgres):
         await database.close()
     with allocation.connect_runtime() as connection:
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            "0001_relational_execution",
+            __import__("workflow_engine.db", fromlist=["SCHEMA_REVISION"]).SCHEMA_REVISION,
         )
         insert_execution(connection, execution_row())
         assert connection.execute("SELECT count(*) FROM execution_runs").fetchone() == (1,)

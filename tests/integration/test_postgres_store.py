@@ -471,6 +471,8 @@ async def test_binary_jsonb_and_default_driver_adapter_isolation():
 
     with PostgresTests.from_environment() as postgres:
         allocation = postgres.allocate(migrate=True)
+        with allocation.connect_runtime() as connection:
+            connection.execute("INSERT INTO tenants (id, slug) VALUES ('tenant-a', 'tenant-a')")
         from workflow_engine.db import create_database
         from workflow_engine.postgres_store import PostgresWorkflowStore
 

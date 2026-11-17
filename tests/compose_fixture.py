@@ -142,6 +142,14 @@ async def operate(args):
         # created this exact isolated project. No runtime process can register it.
         _fixture_owners[store] = row.owner_url
         if args.command == "admit":
+            from sqlalchemy import text
+
+            async with database.sessions.begin() as session:
+                await session.execute(
+                    text(
+                        "INSERT INTO tenants (id, slug) VALUES ('tenant-a', 'tenant-a') ON CONFLICT (id) DO NOTHING"
+                    )
+                )
             workflow = (
                 await store.insert_or_get(
                     Workflow.new("tenant-a", args.key, WorkflowCreate(text=REQUEST))

@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import (
 
 from ._storage_codec import _storage_dumps, _storage_loads
 
-SCHEMA_REVISION = "0001_relational_execution"
+SCHEMA_REVISION = "0007_demo_seed_records"
 
 
 class SchemaNotCurrent(RuntimeError):

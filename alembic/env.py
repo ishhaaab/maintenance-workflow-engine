@@ -6,6 +6,13 @@ from sqlalchemy import create_engine, pool
 from sqlalchemy.engine import make_url
 
 from alembic import context
+from workflow_engine import (
+    demo_models,  # noqa: F401
+    identity_models,  # noqa: F401
+    notification_models,  # noqa: F401
+    review_models,  # noqa: F401
+    version_models,  # noqa: F401
+)
 from workflow_engine.db_models import Base
 
 

@@ -78,7 +78,9 @@ def test_isolated_compose_clean_start_and_restart(tmp_path):
         project.run("run", "--rm", "--no-deps", "migrate")
         project.run("up", "-d", "--wait", "--wait-timeout", "120", timeout=240)
         identity = project.fixture("info")
-        assert identity["schema"] == "0001_relational_execution"
+        from workflow_engine.db import SCHEMA_REVISION
+
+        assert identity["schema"] == SCHEMA_REVISION
         assert identity["runtime_restricted"] is True
         assert identity["runtime_file_uid"] == 10001 and identity["runtime_file_mode"] == "0o400"
         assert identity["runtime_file_gid"] == identity["owner_file_uid"] == 10001
