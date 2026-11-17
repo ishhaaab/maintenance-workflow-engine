@@ -38,16 +38,30 @@ jobs:
         image: redis:7.2.7@sha256:96af50b9ce0cd7f44f73266ce90bb63a6d6d5655adb8854d2723a0382524c8f3
         ports: ['6379:6379']
         options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 10
+      mailpit:
+        image: axllent/mailpit:v1.33.1@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
+        ports: ['1025:1025', '8025:8025']
+        options: --health-cmd "/mailpit readyz" --health-interval 5s --health-retries 20
     env:
       TEST_POSTGRES_URL: postgresql://postgres:isolated-ci-only@127.0.0.1:5432/postgres
       TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      TEST_SMTP_PORT: '1025'
+      TEST_MAILPIT_URL: http://127.0.0.1:8025
+      RUN_BROWSER: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install uv==0.13.6
       - run: uv sync --frozen --extra dev
-      - run: uv run --no-sync python -m pytest -p tests.required_checks tests/integration tests/e2e/test_workflow.py --ignore=tests/integration/test_fault_matrix.py --fail-on-skip -q
+      - name: Install real browser runtime
+        run: uv run --no-sync python -m playwright install --with-deps chromium
+      - name: Required database, SMTP and browser acceptance
+        run: >-
+          uv run --no-sync python -m pytest -p tests.required_checks
+          tests/integration tests/e2e/test_workflow.py tests/e2e/test_review_browser.py
+          tests/e2e/test_review_layout.py --ignore=tests/integration/test_fault_matrix.py
+          --fail-on-skip -q
       - name: Required PostgreSQL 200-case fault matrix
         run: uv run --no-sync python scripts/benchmark_faults.py --output-dir artifacts/postgres-faults --seeds 0,1,2,3,4,5,6,7,8,9
       - uses: actions/upload-artifact@v4
@@ -64,9 +78,11 @@ jobs:
         with: {python-version: '3.12'}
       - run: pip install uv==0.13.6
       - run: uv sync --frozen --extra dev
-      - run: uv run --no-sync python -m pytest -p tests.required_checks tests/e2e/test_compose.py -m compose --fail-on-skip -q
+      - run: uv run --no-sync python -m playwright install --with-deps chromium
+      - run: uv run --no-sync python -m pytest -p tests.required_checks tests/e2e/test_compose.py tests/e2e/test_review_walkthrough.py -m compose --fail-on-skip -q
         env:
           RUN_COMPOSE: '1'
+          RUN_BROWSER: '1'
           COMPOSE_ARTIFACT_DIR: artifacts/postgres-compose
       - uses: actions/upload-artifact@v4
         if: always()

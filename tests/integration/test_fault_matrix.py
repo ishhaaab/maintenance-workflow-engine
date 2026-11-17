@@ -15,7 +15,8 @@ import pytest
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
-from tests.postgres_support import control_execution, runtime_environment, seed_approved_run
+from tests.named_review_fixture import approve_pending_review
+from tests.postgres_support import control_execution, runtime_environment
 from tests.processes import ROOT, checkpoint_worker, simulator_process
 from tests.support import REQUEST
 from workflow_engine.api import create_app
@@ -94,7 +95,7 @@ async def test_fault_case(case, seed, postgres_store, tmp_path):
         "passed": False,
         "backend": "PostgreSQL+Redis+HTTP subprocesses",
         "admission_layer": "internal planning admission; public HTTP 410",
-        "approval_layer": "test-only owned fixture; public HTTP 410",
+        "approval_layer": "two named reviewer sessions through authenticated review commands",
     }
     workflow = None
     try:
@@ -254,15 +255,17 @@ async def test_fault_case(case, seed, postgres_store, tmp_path):
                     }
                     if name == "stale_mismatched_approval":
                         with pytest.raises(Conflict):
-                            await seed_approved_run(store, workflow, workflow.revision, "0" * 64)
+                            await approve_pending_review(
+                                store, workflow, workflow.revision, "0" * 64
+                            )
                         with pytest.raises(Conflict):
-                            await seed_approved_run(store, workflow, 0, workflow.plan_hash)
+                            await approve_pending_review(store, workflow, 0, workflow.plan_hash)
                         assert await current() == workflow
                         assert (await ticket.get("/__effects")).json() == {}
                     assert (await runner.tick(workflow_id, "unapproved")).status == "not_claimed"
                     assert (await api.post(path + "/approve", json=approval)).status_code == 410
                     assert await current() == workflow
-                    workflow = await seed_approved_run(
+                    workflow = await approve_pending_review(
                         store, workflow, workflow.revision, workflow.plan_hash
                     )
                 if name in {
