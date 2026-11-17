@@ -1,6 +1,12 @@
 # Verification record
 
-## Current Phase 1 verification boundary
+## Current review release
+
+See [review acceptance](review-acceptance.md) for the new named-review, SMTP, export, seed and browser checks. [The runbook](review-runbook.md) and [walkthrough](review-walkthrough.md) describe the current application. Evidence below retains its original Phase 1 and historical MongoDB scope and is not being relabeled as current human-review acceptance.
+
+Final local core-release acceptance on 2026-11-17: 612 regression tests passed with zero skips, including two fresh-Compose checks, plus all 200 ten-seed PostgreSQL/Redis/HTTP fault observations. Independent journal and tested-postimage comparisons passed. Five review findings were reproduced and fixed under TDD, then verified in that complete suite. The failed native Windows run is retained separately; passing database-heavy acceptance used isolated Linux private networking. Remote Actions, production deliverability/cutover and throughput remain unverified.
+
+## Retained Phase 1 verification boundary
 
 The current runtime uses PostgreSQL only. `tests/integration/test_runtime.py` checks non-owner runtime credentials, real Redis dispatch, HTTP simulators, separate heartbeat/tick sessions, prepared-fixture recovery, native Windows CLI/server loops and schema-only init. `test_api.py` checks 410/401 denial and safe readiness. Admission/save guards run in the shared memory/PostgreSQL store contract. Test resources are invocation-owned; core PostgreSQL checks must run with a supplied isolated service, not be replaced by skips.
 

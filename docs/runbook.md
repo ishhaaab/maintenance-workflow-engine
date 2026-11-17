@@ -1,6 +1,12 @@
 # Local runbook
 
-## Current Phase 1 runtime
+## Current review application
+
+Use [the approval review runbook](review-runbook.md) for the current application, clean setup, seed accounts, role matrix, reminders, exports and migration instructions. [The walkthrough](review-walkthrough.md) gives the complete browser sequence; [acceptance](review-acceptance.md) records verification.
+
+## Retained Phase 1 foundation instructions
+
+The section below records the earlier fail-closed foundation before identity/review existed. Its health-only limitations are historical, not the current product boundary. Credential provisioning, volume preservation and Windows-loop guidance still apply. Do not use its statements about unavailable UI/reminders/exports as current release status.
 
 This release deliberately exposes health only. Admission/direct approval return 410. Protected reads/cancellation return 401 regardless of legacy keys or cookies. Interactive demo and load commands exit nonzero before making requests. No approval override is available.
 
