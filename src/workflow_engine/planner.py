@@ -44,7 +44,8 @@ class FixturePlanner:
 
     async def propose(self, request: WorkflowCreate, catalog: TenantCatalog) -> PlanProposal:
         return self._cases.get(
-            (catalog.tenant_id, request.text),
+            # Fixture names are catalog provenance, never an authorization identity.
+            (catalog.fixture_namespace or catalog.tenant_id, request.text),
             NeedsInput(
                 questions=["Submit a documented fixture request or configure the model adapter."]
             ),

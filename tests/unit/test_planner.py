@@ -128,3 +128,24 @@ async def test_provider_refusal_is_clarification_not_valid_plan():
         assert isinstance(result, NeedsInput)
         assert planner.last_schema_valid is False
         assert planner.last_inference_response is True
+
+
+async def test_fixture_namespace_is_separate_from_authoritative_tenant():
+    from workflow_engine.domain import ExecutablePlan, WorkflowCreate
+    from workflow_engine.planner import FixturePlanner
+    from workflow_engine.policy import CatalogProvider
+
+    catalog = (
+        CatalogProvider.from_file("fixtures/catalog.jsonl")
+        .get("tenant-a")
+        .model_copy(update={"tenant_id": "opaque-tenant", "fixture_namespace": "tenant-a"})
+    )
+    planner = FixturePlanner.from_file("fixtures/planner_dev.jsonl")
+    proposal = await planner.propose(
+        WorkflowCreate(
+            text="Create an inspection ticket for pump P-17 and reserve one seal kit if available."
+        ),
+        catalog,
+    )
+    assert isinstance(proposal, ExecutablePlan)
+    assert catalog.tenant_id == "opaque-tenant"

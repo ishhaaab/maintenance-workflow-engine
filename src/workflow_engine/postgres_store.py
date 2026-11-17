@@ -51,7 +51,7 @@ def _decode(row: ExecutionRun) -> Workflow:
         values = {
             column.name: getattr(row, column.name)
             for column in ExecutionRun.__table__.columns
-            if column.name != "payload"
+            if column.name in Workflow.model_fields and column.name != "payload"
         }
         values["workflow_id"] = str(values["workflow_id"])
         return Workflow.model_validate({**values, **row.payload})
@@ -207,6 +207,9 @@ class PostgresWorkflowStore:
         values = _encode(workflow)
         try:
             async with self.database.sessions.begin() as session:
+                from .execution_bridge import lock_review
+
+                await lock_review(session, workflow.tenant_id, values["workflow_id"])
                 row = (
                     await session.execute(
                         select(ExecutionRun)
@@ -227,6 +230,11 @@ class PostgresWorkflowStore:
                 elif _live(old, now):
                     raise Conflict("Active worker lease")
                 _reject_new_approval(old, workflow)
+                if old.approved_plan_hash is not None:
+                    from .execution_bridge import execution_eligible
+
+                    if not await execution_eligible(session, row):
+                        raise Conflict("missing_review_authorization")
                 _validate_change(old, workflow, expected_revision)
                 changes = {key: getattr(old, key) for key in _OPERATIONAL}
                 changes.update(
@@ -282,6 +290,9 @@ class PostgresWorkflowStore:
                 await _append_audit(
                     session, old, result, actor, f"{result.workflow_id}:{result.revision}"
                 )
+                from .execution_bridge import record_plan
+
+                await record_plan(session, row, old, result)
                 return result
         except IntegrityError:
             raise Conflict("Persistence constraint conflict") from None
@@ -308,6 +319,10 @@ class PostgresWorkflowStore:
                     return None
                 now = (await session.execute(select(func.clock_timestamp()))).scalar_one()
                 if not _due(_decode(row), now):
+                    return None
+                from .execution_bridge import execution_eligible
+
+                if not await execution_eligible(session, row):
                     return None
                 row = (
                     await session.execute(
@@ -378,6 +393,27 @@ class PostgresWorkflowStore:
                 return True
         except (SQLAlchemyError, ValueError):
             raise Conflict("PostgreSQL lease renewal failed") from None
+
+    async def catalog_for(self, workflow):
+        from .policy import TenantCatalog
+        from .version_models import ItemVersion
+
+        async with self.database.sessions() as session:
+            catalog = (
+                await session.execute(
+                    select(ItemVersion.catalog)
+                    .join(
+                        ExecutionRun,
+                        (ExecutionRun.item_version_id == ItemVersion.id)
+                        & (ExecutionRun.tenant_id == ItemVersion.tenant_id),
+                    )
+                    .where(
+                        ExecutionRun.workflow_id == UUID(workflow.workflow_id),
+                        ExecutionRun.tenant_id == workflow.tenant_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            return TenantCatalog.model_validate(catalog) if catalog is not None else None
 
     async def release(self, lease: Lease) -> None:
         try:

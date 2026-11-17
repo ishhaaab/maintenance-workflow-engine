@@ -89,7 +89,11 @@ class Runner:
                 w, DomainEvent(kind="planning_started", metadata=self.planner.metadata), lease, lost
             )
             request = WorkflowCreate(text=w.request_text)
-            catalog = self.catalog.get(w.tenant_id)
+            catalog = (
+                await self.store.catalog_for(w) if hasattr(self.store, "catalog_for") else None
+            )
+            if catalog is None:
+                catalog = self.catalog.get(w.tenant_id)
             try:
                 async with asyncio.timeout(self.planner_timeout_s):
                     proposal = await self.planner.propose(request, catalog)

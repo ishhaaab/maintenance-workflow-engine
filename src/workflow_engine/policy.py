@@ -29,6 +29,7 @@ class Part(Model):
 
 class TenantCatalog(Model):
     tenant_id: str
+    fixture_namespace: str | None = None
     version: str
     assets: list[Asset]
     parts: list[Part]
